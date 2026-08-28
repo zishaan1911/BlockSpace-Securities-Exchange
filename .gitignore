@@ -1,0 +1,47 @@
+# Environment
+.env
+.env.local
+*.local
+
+# Node / TypeScript
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# C++
+*.o
+*.obj
+*.out
+*.exe
+CMakeFiles/
+CMakeCache.txt
+cmake-build-*/
+
+# Move / Sui
+contracts/**/build/
+.sui/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Logs
+*.log
+logs/
