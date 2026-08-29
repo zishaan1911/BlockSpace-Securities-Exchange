@@ -153,4 +153,16 @@ module gasx::market {
     public fun share_for_testing(market: Market) {
         transfer::share_object(market);
     }
+
+    #[test_only]
+    /// Force-destroy a market for test cleanup. share_object can only be
+    /// called on an object within the same transaction that created it, so
+    /// this is used instead once a test has advanced past that point.
+    public fun destroy_for_testing(market: Market) {
+        let Market {
+            id, underlying: _, expiry_ms: _, contract_multiplier: _, tick_size: _,
+            margin_ratio_bps: _, oracle_id: _, paused: _, settled: _, settlement_price: _,
+        } = market;
+        object::delete(id);
+    }
 }

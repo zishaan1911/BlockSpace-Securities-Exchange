@@ -33,7 +33,7 @@ module gasx::settlement_tests {
         margin::MarginAccount<SUI>, margin::MarginAccount<SUI>,
         order::Order, order::Order, u64, u64,
     ) {
-        let mut oracle_state = oracle::create_oracle_for_testing(PUBLISHER, 5_000, ts::ctx(scenario));
+        let oracle_state = oracle::create_oracle_for_testing(PUBLISHER, 5_000, ts::ctx(scenario));
         let oracle_id = object::id(&oracle_state);
         let market = market::create_market_for_testing(
             string::utf8(b"ETH_GAS_1H"), EXPIRY_MS, 1, 1, MARGIN_RATIO_BPS, oracle_id, ts::ctx(scenario),
@@ -114,8 +114,8 @@ module gasx::settlement_tests {
         order::destroy_order_for_testing(sell_order);
         sui::transfer::public_transfer(buyer_margin, BUYER);
         sui::transfer::public_transfer(seller_margin, SELLER);
-        market::share_for_testing(market);
-        oracle::share_for_testing(oracle_state);
+        market::destroy_for_testing(market);
+        oracle::destroy_for_testing(oracle_state);
         clock::destroy_for_testing(clock);
         ts::end(scenario);
     }
@@ -125,7 +125,7 @@ module gasx::settlement_tests {
     fun cannot_claim_twice() {
         let mut scenario = ts::begin(ADMIN);
         let (
-            mut market, mut oracle_state, clock, mut buyer_margin, mut seller_margin,
+            mut market, mut oracle_state, clock, mut buyer_margin, seller_margin,
             buy_order, sell_order, _buyer_required, _seller_required,
         ) = setup_matched_trade(&mut scenario);
 
@@ -151,8 +151,8 @@ module gasx::settlement_tests {
         order::destroy_order_for_testing(sell_order);
         sui::transfer::public_transfer(buyer_margin, BUYER);
         sui::transfer::public_transfer(seller_margin, SELLER);
-        market::share_for_testing(market);
-        oracle::share_for_testing(oracle_state);
+        market::destroy_for_testing(market);
+        oracle::destroy_for_testing(oracle_state);
         clock::destroy_for_testing(clock);
         ts::end(scenario);
     }
@@ -176,8 +176,8 @@ module gasx::settlement_tests {
         order::destroy_order_for_testing(sell_order);
         sui::transfer::public_transfer(buyer_margin, BUYER);
         sui::transfer::public_transfer(seller_margin, SELLER);
-        market::share_for_testing(market);
-        oracle::share_for_testing(oracle_state);
+        market::destroy_for_testing(market);
+        oracle::destroy_for_testing(oracle_state);
         clock::destroy_for_testing(clock);
         ts::end(scenario);
     }
@@ -196,8 +196,8 @@ module gasx::settlement_tests {
 
         settlement::settle_market(&mut market, &oracle_state, &clock);
 
-        market::share_for_testing(market);
-        oracle::share_for_testing(oracle_state);
+        market::destroy_for_testing(market);
+        oracle::destroy_for_testing(oracle_state);
         clock::destroy_for_testing(clock);
         ts::end(scenario);
     }

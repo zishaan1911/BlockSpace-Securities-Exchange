@@ -28,7 +28,7 @@ module gasx::oracle_tests {
         assert!(oracle::last_update_ms(&oracle) == 1_000, 1);
         assert!(oracle::is_fresh(&oracle, &clock), 2);
 
-        oracle::share_for_testing(oracle);
+        oracle::destroy_for_testing(oracle);
         sui::transfer::public_transfer(cap, ADMIN);
         clock::destroy_for_testing(clock);
         ts::end(scenario);
@@ -46,7 +46,7 @@ module gasx::oracle_tests {
             oracle::update_price(&mut oracle, 512, &clock, ts::ctx(&mut scenario));
         };
 
-        oracle::share_for_testing(oracle);
+        oracle::destroy_for_testing(oracle);
         clock::destroy_for_testing(clock);
         ts::end(scenario);
     }
@@ -67,7 +67,7 @@ module gasx::oracle_tests {
         };
         assert!(oracle::price(&oracle) == 777, 1);
 
-        oracle::share_for_testing(oracle);
+        oracle::destroy_for_testing(oracle);
         sui::transfer::public_transfer(cap, ADMIN);
         clock::destroy_for_testing(clock);
         ts::end(scenario);
@@ -90,7 +90,7 @@ module gasx::oracle_tests {
         clock::set_for_testing(&mut clock, 1_001);
         assert!(!oracle::is_fresh(&oracle, &clock), 1);
 
-        oracle::share_for_testing(oracle);
+        oracle::destroy_for_testing(oracle);
         clock::destroy_for_testing(clock);
         ts::end(scenario);
     }
@@ -103,7 +103,7 @@ module gasx::oracle_tests {
 
         assert!(!oracle::is_fresh(&oracle, &clock), 0);
 
-        oracle::share_for_testing(oracle);
+        oracle::destroy_for_testing(oracle);
         clock::destroy_for_testing(clock);
         ts::end(scenario);
     }

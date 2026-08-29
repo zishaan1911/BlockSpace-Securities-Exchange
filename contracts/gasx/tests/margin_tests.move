@@ -37,7 +37,7 @@ module gasx::margin_tests {
         assert!(margin::locked_balance(&account) == 0, 1);
 
         sui::transfer::public_transfer(account, TRADER);
-        market::share_for_testing(market);
+        market::destroy_for_testing(market);
         ts::end(scenario);
     }
 
@@ -58,7 +58,7 @@ module gasx::margin_tests {
         margin::deposit(&mut account, &market, payment, ts::ctx(&mut scenario));
 
         sui::transfer::public_transfer(account, TRADER);
-        market::share_for_testing(market);
+        market::destroy_for_testing(market);
         ts::end(scenario);
     }
 

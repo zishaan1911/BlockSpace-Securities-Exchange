@@ -20,6 +20,11 @@ module gasx::oracle {
         id: UID,
         /// Latest published index value, on the 0–1000 EGSI scale (§10.1).
         price: u64,
+        /// False until the first update_price call. Needed because a
+        /// publish can legitimately happen at clock timestamp 0, so
+        /// last_update_ms alone can't distinguish "never published" from
+        /// "published at t=0".
+        has_price: bool,
         last_update_ms: u64,
         publisher: address,
         /// A price older than this many ms is considered stale.
@@ -36,6 +41,7 @@ module gasx::oracle {
         let oracle = OracleState {
             id: object::new(ctx),
             price: 0,
+            has_price: false,
             last_update_ms: 0,
             publisher: initial_publisher,
             max_staleness_ms,
@@ -55,6 +61,7 @@ module gasx::oracle {
     ) {
         assert!(tx_context::sender(ctx) == oracle.publisher, E_NOT_PUBLISHER);
         oracle.price = price;
+        oracle.has_price = true;
         oracle.last_update_ms = clock::timestamp_ms(clock);
         events::emit_oracle_price_updated(object::id(oracle), price, oracle.last_update_ms);
     }
@@ -83,8 +90,7 @@ module gasx::oracle {
 
     public fun is_fresh(oracle: &OracleState, clock: &Clock): bool {
         let now = clock::timestamp_ms(clock);
-        // last_update_ms == 0 means never published; treat as stale.
-        oracle.last_update_ms > 0 && now - oracle.last_update_ms <= oracle.max_staleness_ms
+        oracle.has_price && now - oracle.last_update_ms <= oracle.max_staleness_ms
     }
 
     /// Used by `settlement` (and, later, pricing) to hard-fail rather than
@@ -102,6 +108,7 @@ module gasx::oracle {
         OracleState {
             id: object::new(ctx),
             price: 0,
+            has_price: false,
             last_update_ms: 0,
             publisher: initial_publisher,
             max_staleness_ms,
@@ -111,5 +118,14 @@ module gasx::oracle {
     #[test_only]
     public fun share_for_testing(oracle: OracleState) {
         transfer::share_object(oracle);
+    }
+
+    #[test_only]
+    /// Force-destroy an oracle for test cleanup. share_object can only be
+    /// called on an object within the same transaction that created it, so
+    /// this is used instead once a test has advanced past that point.
+    public fun destroy_for_testing(oracle: OracleState) {
+        let OracleState { id, price: _, has_price: _, last_update_ms: _, publisher: _, max_staleness_ms: _ } = oracle;
+        object::delete(id);
     }
 }
