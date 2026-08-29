@@ -8,8 +8,10 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE RelWithDebInfo)
 endif()
 
-add_library(gasx_engine INTERFACE)
-target_include_directories(gasx_engine INTERFACE include)
+add_library(gasx_engine STATIC
+  src/risk.cpp
+)
+target_include_directories(gasx_engine PUBLIC include)
 
 option(GASX_ENGINE_BUILD_TESTS "Build gasx_engine unit tests" ON)
 
@@ -28,6 +30,7 @@ if(GASX_ENGINE_BUILD_TESTS)
   enable_testing()
   add_executable(gasx_engine_tests
     tests/smoke_tests.cpp
+    tests/risk_tests.cpp
   )
   target_link_libraries(gasx_engine_tests PRIVATE gasx_engine GTest::gtest_main)
 
