@@ -4,10 +4,16 @@ set -euo pipefail
 echo ""
 echo "=== GASX tool installer (inside WSL) ==="
 
+has_linux_cmd() {
+    local p
+    p=$(command -v "$1" 2>/dev/null) || return 1
+    [[ "$p" != /mnt/* ]]
+}
+
 sudo apt-get update -y
 sudo apt-get install -y curl git ca-certificates gnupg python3
 
-if ! command -v psql >/dev/null 2>&1; then
+if ! has_linux_cmd psql; then
     echo "Installing PostgreSQL ..."
     sudo apt-get install -y postgresql postgresql-contrib
 fi
@@ -22,24 +28,24 @@ if ! sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='gasx'"
     sudo -u postgres createdb -O gasx gasx
 fi
 
-if ! command -v node >/dev/null 2>&1; then
+if ! has_linux_cmd node; then
     echo "Installing Node.js 20 LTS ..."
     curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
     sudo apt-get install -y nodejs
 fi
 
-if ! command -v uv >/dev/null 2>&1; then
+if ! has_linux_cmd uv; then
     echo "Installing uv ..."
     curl -LsSf https://astral.sh/uv/install.sh | sh
     export PATH="$HOME/.local/bin:$PATH"
 fi
 
-if ! command -v pnpm >/dev/null 2>&1; then
+if ! has_linux_cmd pnpm; then
     echo "Installing pnpm ..."
     npm install -g pnpm
 fi
 
-if ! command -v sui >/dev/null 2>&1; then
+if ! has_linux_cmd sui; then
     echo "Installing Sui CLI (latest release) ..."
     URL=$(python3 - <<'EOF'
 import json, urllib.request
