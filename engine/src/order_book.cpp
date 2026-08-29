@@ -25,7 +25,6 @@ std::size_t order_count(const MapT& levels) {
 } // namespace
 
 void OrderBook::add_resting_order(Order order) {
-  order.remaining_quantity = order.original_quantity;
   const OrderId id = order.id;
   const Side side = order.side;
   const Price price = order.price;

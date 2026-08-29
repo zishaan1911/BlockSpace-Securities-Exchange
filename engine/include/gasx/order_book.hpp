@@ -28,8 +28,13 @@ namespace gasx {
 // built on top of this book's public API.
 class OrderBook {
  public:
-  // Inserts `order` as a new resting order. Ignores order.remaining_quantity
-  // as given and sets it to order.original_quantity.
+  // Inserts `order` as a new resting order, using its remaining_quantity
+  // as given. Callers adding a brand-new order (not already partially
+  // filled) are responsible for setting remaining_quantity ==
+  // original_quantity themselves — this does not do it for them, since
+  // MatchingEngine also uses this to re-rest a leftover after a partial
+  // match, where remaining_quantity must NOT be reset back to
+  // original_quantity.
   void add_resting_order(Order order);
 
   // Removes `id` if it is currently resting in the book. Returns true if
