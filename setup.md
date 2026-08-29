@@ -24,6 +24,15 @@ Everything here is designed to be **disposable**: setup with one command, destro
 
 **Prerequisites (install these yourself first):** WSL with an Ubuntu distro (`wsl --install -d Ubuntu`) and VS Code.
 
+**Important WSL configuration:** by default WSL puts Windows executables on the PATH, so `node`/`pnpm` inside WSL can accidentally resolve to a Windows install. In WSL, create `/etc/wsl.conf` with:
+
+```ini
+[interop]
+appendWindowsPath = false
+```
+
+Then run `wsl --shutdown` from PowerShell and reopen WSL. (The setup script also ignores any tool that resolves to `/mnt/c/...` as a safety net.)
+
 Then one command on Windows (PowerShell):
 
 ```powershell
@@ -69,3 +78,38 @@ What it removes:
 3. **Uninstalls Node.js, pnpm, uv, and the Sui CLI** (inside WSL).
 
 The WSL distro itself is left intact; Python 3 and base tools (curl, git) are kept because the distro depends on them. After teardown, `scripts/setup.ps1` fully rebuilds the environment in one run.
+
+---
+
+## 4. Useful Commands
+
+```bash
+# WSL / VS Code
+wsl -d Ubuntu                        # open the Ubuntu distro
+wsl --shutdown                       # restart WSL (from PowerShell)
+code .                               # open the repo in VS Code (run inside WSL)
+
+# Database
+sudo service postgresql start        # start Postgres (after each WSL boot)
+psql -h localhost -U gasx -d gasx    # connect to the database (password: gasx)
+
+# Node (frontend / API)
+pnpm install                         # install workspace dependencies
+pnpm dev                             # run dev servers
+
+# Python (AI service)
+uv sync                              # install python deps from the lockfile
+uv run <command>                     # run a command in the project venv
+
+# Sui / Move
+sui client envs                      # list network configs
+sui client switch --env testnet      # switch to Sui testnet
+sui client new-address ed25519       # create a new address
+sui client faucet                    # get testnet SUI for an address
+sui move build                       # compile the Move contracts
+sui move test                        # run Move unit tests
+
+# Environment lifecycle (PowerShell on Windows)
+powershell -ExecutionPolicy Bypass -File scripts/setup.ps1
+powershell -ExecutionPolicy Bypass -File scripts/teardown.ps1
+```
