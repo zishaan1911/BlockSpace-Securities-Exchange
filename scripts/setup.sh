@@ -4,6 +4,9 @@ set -euo pipefail
 echo ""
 echo "=== GASX tool installer (inside WSL) ==="
 
+export PATH="$HOME/.local/bin:$HOME/.sui/bin:$PATH"
+hash -r 2>/dev/null || true
+
 has_linux_cmd() {
     local p
     p=$(command -v "$1" 2>/dev/null) || return 1
@@ -28,16 +31,35 @@ if ! sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='gasx'"
     sudo -u postgres createdb -O gasx gasx
 fi
 
-if ! has_linux_cmd node; then
-    echo "Installing Node.js 20 LTS ..."
-    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-    sudo apt-get install -y nodejs
+mkdir -p "$HOME/.local/bin"
+grep -q '\.local/bin' "$HOME/.bashrc" || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
+
+if ! has_linux_cmd node || ! has_linux_cmd npm; then
+    echo "Installing Node.js 20 LTS (user-local tarball) ..."
+    NODE_TARBALL=$(python3 - <<'EOF'
+import urllib.request, re
+html = urllib.request.urlopen("https://nodejs.org/dist/latest-v20.x/").read().decode()
+names = set(re.findall(r'node-v20\.\d+\.\d+-linux-x64\.tar\.xz', html))
+def key(n):
+    return [int(x) for x in re.findall(r'\d+', n)][:3]
+print(max(names, key=key))
+EOF
+)
+    mkdir -p "$HOME/.node"
+    curl -fsSL "https://nodejs.org/dist/latest-v20.x/$NODE_TARBALL" -o /tmp/node.tar.xz
+    tar -xJf /tmp/node.tar.xz -C "$HOME/.node" --strip-components=1
+    rm -f /tmp/node.tar.xz
+    ln -sf "$HOME/.node/bin/node" "$HOME/.local/bin/node"
+    ln -sf "$HOME/.node/bin/npm" "$HOME/.local/bin/npm"
+    ln -sf "$HOME/.node/bin/npx" "$HOME/.local/bin/npx"
+    npm config set prefix "$HOME/.local"
+    hash -r
 fi
 
 if ! has_linux_cmd uv; then
     echo "Installing uv ..."
     curl -LsSf https://astral.sh/uv/install.sh | sh
-    export PATH="$HOME/.local/bin:$PATH"
+    hash -r
 fi
 
 if ! has_linux_cmd pnpm; then

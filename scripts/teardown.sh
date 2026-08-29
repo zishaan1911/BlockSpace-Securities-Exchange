@@ -3,6 +3,8 @@ set -uo pipefail
 
 REPO=$1
 
+export PATH="$HOME/.local/bin:$HOME/.sui/bin:$PATH"
+
 echo ""
 echo "=== GASX teardown (inside WSL) ==="
 
@@ -19,6 +21,12 @@ sudo -u postgres psql -c "DROP ROLE IF EXISTS gasx;" 2>/dev/null || true
 
 echo "Removing pnpm ..."
 npm uninstall -g pnpm 2>/dev/null || true
+
+echo "Removing Node.js ..."
+rm -rf "$HOME/.node"
+rm -f "$HOME/.local/bin/node" "$HOME/.local/bin/npm" "$HOME/.local/bin/npx"
+rm -rf "$HOME/.local/lib/node_modules" 2>/dev/null || true
+sed -i '/\.local\/bin/d' "$HOME/.bashrc" 2>/dev/null || true
 
 echo "Removing Sui CLI ..."
 rm -rf "$HOME/.sui"
