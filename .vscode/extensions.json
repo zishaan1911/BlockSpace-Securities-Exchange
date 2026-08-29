@@ -1,0 +1,12 @@
+{
+  "recommendations": [
+    "ms-vscode-remote.remote-wsl",
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "mysten.move",
+    "ms-azuretools.vscode-docker",
+    "mysten.prettier-plugin-move"
+  ]
+}
