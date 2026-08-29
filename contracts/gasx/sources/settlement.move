@@ -57,7 +57,7 @@ module gasx::settlement {
     /// it, one claim closes it) and credits their `MarginAccount`.
     public fun claim<C>(
         trade: &mut Trade<C>,
-        position: Position,
+        mut position: Position,
         market: &Market,
         margin_account: &mut MarginAccount<C>,
         ctx: &TxContext,

@@ -32,6 +32,7 @@ module gasx::margin {
     }
 
     /// Open an empty margin account for `sender`, scoped to one market.
+    #[allow(lint(self_transfer))]
     public fun open_account<C>(market: &Market, ctx: &mut TxContext) {
         let account = MarginAccount<C> {
             id: object::new(ctx),
@@ -75,6 +76,7 @@ module gasx::margin {
         coin::from_balance(balance::split(&mut account.available, amount), ctx)
     }
 
+    #[allow(lint(self_transfer))]
     public fun withdraw_and_transfer<C>(
         account: &mut MarginAccount<C>,
         amount: u64,
