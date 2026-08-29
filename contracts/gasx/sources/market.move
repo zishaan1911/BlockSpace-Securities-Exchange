@@ -63,18 +63,18 @@ module gasx::market {
         market_id
     }
 
-    public entry fun pause(_admin: &AdminCap, market: &mut Market) {
+    public fun pause(_admin: &AdminCap, market: &mut Market) {
         market.paused = true;
         events::emit_market_status_changed(object::id(market), true);
     }
 
-    public entry fun unpause(_admin: &AdminCap, market: &mut Market) {
+    public fun unpause(_admin: &AdminCap, market: &mut Market) {
         assert!(!market.settled, E_MARKET_ALREADY_SETTLED);
         market.paused = false;
         events::emit_market_status_changed(object::id(market), false);
     }
 
-    public entry fun set_margin_ratio(_admin: &AdminCap, market: &mut Market, new_ratio_bps: u64) {
+    public fun set_margin_ratio(_admin: &AdminCap, market: &mut Market, new_ratio_bps: u64) {
         market.margin_ratio_bps = new_ratio_bps;
     }
 

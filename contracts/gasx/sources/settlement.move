@@ -42,7 +42,7 @@ module gasx::settlement {
 
     /// Permissionless: settle `market` at the oracle's current price, once
     /// expiry has passed and that price is fresh.
-    public entry fun settle_market(market: &mut Market, oracle: &OracleState, clock: &Clock) {
+    public fun settle_market(market: &mut Market, oracle: &OracleState, clock: &Clock) {
         assert!(market::oracle_id(market) == object::id(oracle), E_WRONG_ORACLE);
         assert!(clock::timestamp_ms(clock) >= market::expiry_ms(market), E_NOT_EXPIRED);
         oracle::assert_fresh(oracle, clock);
@@ -55,7 +55,7 @@ module gasx::settlement {
     /// Claim this trader's payout from a settled trade. Consumes their
     /// `Position` (it is fully closed by construction — one trade opened
     /// it, one claim closes it) and credits their `MarginAccount`.
-    public entry fun claim<C>(
+    public fun claim<C>(
         trade: &mut Trade<C>,
         position: Position,
         market: &Market,

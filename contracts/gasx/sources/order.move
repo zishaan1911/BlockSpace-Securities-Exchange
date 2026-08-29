@@ -75,7 +75,7 @@ module gasx::order {
     }
 
     /// Lock the required margin and place a resting order.
-    public entry fun place_order<C>(
+    public fun place_order<C>(
         market: &Market,
         margin_account: &mut MarginAccount<C>,
         is_bid: bool,
@@ -108,7 +108,7 @@ module gasx::order {
     }
 
     /// Owner-gated: cancel an open order and release its locked margin.
-    public entry fun cancel_order<C>(
+    public fun cancel_order<C>(
         order: &mut Order,
         margin_account: &mut MarginAccount<C>,
         ctx: &TxContext,
@@ -187,8 +187,8 @@ module gasx::order {
             buy_order.owner, sell_order.owner, trade_price, quantity,
         );
 
-        transfer::transfer(buyer_position, buy_order.owner);
-        transfer::transfer(seller_position, sell_order.owner);
+        transfer::public_transfer(buyer_position, buy_order.owner);
+        transfer::public_transfer(seller_position, sell_order.owner);
         transfer::share_object(trade);
 
         trade_id

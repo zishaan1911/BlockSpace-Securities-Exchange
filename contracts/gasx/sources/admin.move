@@ -24,7 +24,7 @@ module gasx::admin {
     }
 
     /// Transfer admin authority to a new address (e.g. a multisig).
-    public entry fun transfer_admin(cap: AdminCap, to: address) {
+    public fun transfer_admin(cap: AdminCap, to: address) {
         transfer::transfer(cap, to);
     }
 

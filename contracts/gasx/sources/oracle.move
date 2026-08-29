@@ -47,7 +47,7 @@ module gasx::oracle {
 
     /// Publisher-gated: push a new EGSI value with the current chain
     /// timestamp.
-    public entry fun update_price(
+    public fun update_price(
         oracle: &mut OracleState,
         price: u64,
         clock: &Clock,
@@ -60,12 +60,12 @@ module gasx::oracle {
     }
 
     /// Admin-gated: rotate which address is authorized to publish.
-    public entry fun set_publisher(_admin: &AdminCap, oracle: &mut OracleState, new_publisher: address) {
+    public fun set_publisher(_admin: &AdminCap, oracle: &mut OracleState, new_publisher: address) {
         oracle.publisher = new_publisher;
     }
 
     /// Admin-gated: adjust the freshness window.
-    public entry fun set_max_staleness(_admin: &AdminCap, oracle: &mut OracleState, max_staleness_ms: u64) {
+    public fun set_max_staleness(_admin: &AdminCap, oracle: &mut OracleState, max_staleness_ms: u64) {
         oracle.max_staleness_ms = max_staleness_ms;
     }
 

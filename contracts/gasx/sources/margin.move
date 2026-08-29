@@ -32,7 +32,7 @@ module gasx::margin {
     }
 
     /// Open an empty margin account for `sender`, scoped to one market.
-    public entry fun open_account<C>(market: &Market, ctx: &mut TxContext) {
+    public fun open_account<C>(market: &Market, ctx: &mut TxContext) {
         let account = MarginAccount<C> {
             id: object::new(ctx),
             owner: tx_context::sender(ctx),
@@ -45,7 +45,7 @@ module gasx::margin {
 
     /// Add collateral to `available`. Callable by anyone funding their own
     /// account (owner-gated); market must not be paused/settled.
-    public entry fun deposit<C>(
+    public fun deposit<C>(
         account: &mut MarginAccount<C>,
         market: &Market,
         payment: Coin<C>,
@@ -66,7 +66,7 @@ module gasx::margin {
     public fun withdraw<C>(
         account: &mut MarginAccount<C>,
         amount: u64,
-        ctx: &TxContext,
+        ctx: &mut TxContext,
     ): Coin<C> {
         assert!(account.owner == tx_context::sender(ctx), E_NOT_OWNER);
         assert!(balance::value(&account.available) >= amount, E_INSUFFICIENT_AVAILABLE);
@@ -75,7 +75,7 @@ module gasx::margin {
         coin::from_balance(balance::split(&mut account.available, amount), ctx)
     }
 
-    public entry fun withdraw_and_transfer<C>(
+    public fun withdraw_and_transfer<C>(
         account: &mut MarginAccount<C>,
         amount: u64,
         ctx: &mut TxContext,
