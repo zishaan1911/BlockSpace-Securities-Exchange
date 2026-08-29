@@ -33,6 +33,14 @@ appendWindowsPath = false
 
 Then run `wsl --shutdown` from PowerShell and reopen WSL. (The setup script also ignores any tool that resolves to `/mnt/c/...` as a safety net.)
 
+**Impact of disabling Windows interop:**
+
+- You can no longer launch Windows programs by name from WSL (`explorer.exe`, `clip.exe`, Windows git/python/node, etc.) — that is exactly the class of bug this prevents.
+- Still works: `code .` (VS Code's WSL extension installs its own `code` shim inside WSL), all files under `/mnt/c/...` (a mount, not PATH), and everything installed inside WSL (git, Node, Python, Postgres, Sui).
+- `scripts/setup.ps1` / `teardown.ps1` run from Windows PowerShell, so they are unaffected.
+
+For this project the trade is a clear win: a Windows toolchain can never accidentally shadow the WSL one.
+
 Then one command on Windows (PowerShell):
 
 ```powershell
