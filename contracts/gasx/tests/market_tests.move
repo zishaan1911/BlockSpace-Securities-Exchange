@@ -4,7 +4,7 @@ module gasx::market_tests {
     use sui::object;
     use sui::test_scenario::{Self as ts};
     use gasx::admin;
-    use gasx::market::{Self, Market};
+    use gasx::market;
 
     const ADMIN: address = @0xA1;
 

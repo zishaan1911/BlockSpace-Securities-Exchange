@@ -3,7 +3,7 @@ module gasx::oracle_tests {
     use sui::test_scenario::{Self as ts};
     use sui::clock::{Self};
     use gasx::admin;
-    use gasx::oracle::{Self, OracleState};
+    use gasx::oracle;
 
     const ADMIN: address = @0xA1;
     const PUBLISHER: address = @0xB1;
