@@ -43,11 +43,23 @@ if ! command -v sui >/dev/null 2>&1; then
     echo "Installing Sui CLI (latest release) ..."
     URL=$(python3 - <<'EOF'
 import json, urllib.request
-r = json.load(urllib.request.urlopen("https://api.github.com/repos/MystenLabs/sui/releases/latest"))
-assets = [a["browser_download_url"] for a in r["assets"]
-          if "linux-x86_64" in a["name"] and a["name"].endswith(".tgz")]
-url = next((u for u in assets if "testnet" in u), assets[0] if assets else "")
-print(url)
+
+def find_url():
+    for page in range(1, 4):
+        releases = json.load(urllib.request.urlopen(
+            "https://api.github.com/repos/MystenLabs/sui/releases?per_page=5&page=" + str(page)))
+        for rel in releases:
+            if rel.get("draft") or rel.get("prerelease"):
+                continue
+            assets = [a["browser_download_url"] for a in rel["assets"]
+                      if a["name"].endswith(".tgz") and "x86_64" in a["name"]
+                      and "macos" not in a["name"] and "windows" not in a["name"]]
+            if not assets:
+                continue
+            return next((u for u in assets if "ubuntu" in u), assets[0])
+    return ""
+
+print(find_url())
 EOF
 )
     if [ -z "$URL" ]; then

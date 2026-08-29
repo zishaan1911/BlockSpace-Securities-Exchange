@@ -24,6 +24,11 @@ $wslRepo = "/mnt/" + (($repo -replace ":", "" -replace "\\", "/")).ToLower()
 
 Write-Host "Running the tool installer inside WSL Ubuntu ..." -ForegroundColor Yellow
 wsl -d Ubuntu bash "$wslRepo/scripts/setup.sh"
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ""
+    Write-Host "ERROR: the WSL installer failed (exit $LASTEXITCODE). Fix the problem shown above, then re-run this script." -ForegroundColor Red
+    exit $LASTEXITCODE
+}
 
 Write-Host ""
 Write-Host "Setup complete." -ForegroundColor Green
