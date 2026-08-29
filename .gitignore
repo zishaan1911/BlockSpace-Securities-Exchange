@@ -30,6 +30,7 @@ venv/
 CMakeFiles/
 CMakeCache.txt
 cmake-build-*/
+engine/build/
 
 # Move / Sui
 contracts/**/build/
