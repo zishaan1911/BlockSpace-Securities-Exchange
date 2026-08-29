@@ -25,4 +25,20 @@ Price required_margin(Price price,
                        std::int64_t contract_multiplier,
                        std::int64_t margin_ratio_bps);
 
+struct PnlResult {
+  Price magnitude = 0;
+  bool is_negative = false;
+};
+
+// PnL for `quantity` contracts moving from `entry_price` to `exit_price`,
+// per the same formula as gasx::risk::compute_pnl in the Move contracts:
+// Long P&L = (exit - entry) * contract_multiplier * quantity. A flat move
+// (entry == exit) returns {0, false}. Throws std::invalid_argument if
+// contract_multiplier <= 0.
+PnlResult compute_pnl(bool is_long,
+                       Price entry_price,
+                       Price exit_price,
+                       Quantity quantity,
+                       std::int64_t contract_multiplier);
+
 } // namespace gasx::risk
