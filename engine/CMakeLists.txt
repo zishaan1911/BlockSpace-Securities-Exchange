@@ -12,6 +12,7 @@ add_library(gasx_engine STATIC
   src/risk.cpp
   src/order_book.cpp
   src/matching_engine.cpp
+  src/pre_trade_risk.cpp
 )
 target_include_directories(gasx_engine PUBLIC include)
 
@@ -35,6 +36,7 @@ if(GASX_ENGINE_BUILD_TESTS)
     tests/risk_tests.cpp
     tests/order_book_tests.cpp
     tests/matching_engine_tests.cpp
+    tests/pre_trade_risk_tests.cpp
   )
   target_link_libraries(gasx_engine_tests PRIVATE gasx_engine GTest::gtest_main)
 
