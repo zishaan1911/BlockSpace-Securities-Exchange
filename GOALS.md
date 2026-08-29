@@ -1,268 +1,54 @@
-# GASX — Goals
+# GASX — Goals (Hackathon)
 
-What we are trying to achieve. For what GASX is, see [README.md](README.md). For how it is designed, see [ARCHITECTURE.md](ARCHITECTURE.md).
+> Read first: [README.md](README.md) (the idea) and [GLOSSARY.md](GLOSSARY.md) (the terms). Then read this file for what to build; then [ARCHITECTURE.md](ARCHITECTURE.md) for how each piece works.
 
----
+## Success Criteria
 
-## 1. Hackathon Goals
-
-The demo must be able to:
+The demo must:
 
 1. Connect a Sui-compatible wallet.
-2. Display live Ethereum gas conditions.
-3. Produce a live EGSI value.
-4. Produce an AI forecast and confidence score.
-5. Display an on-chain order book.
-6. Submit a real order.
-7. Match/execute a real trade on Sui.
-8. Show the resulting position.
-9. Calculate portfolio exposure.
-10. Query Thetanuts for an ETH hedge opportunity.
-11. Execute or demonstrate a real Thetanuts hedge path under strict limits.
+2. Show live Ethereum gas conditions and a live EGSI value.
+3. Show an AI forecast with a confidence score.
+4. Submit and execute a **real order on Sui**, and show the resulting position.
+5. Query Thetanuts for ETH hedge opportunities via live market data / MM pricing.
+6. **THE BAR**: the AI agent places at least one real on-chain options trade on Thetanuts' OptionBook or OptionFactory, live on Base mainnet, against live pricing. Testnet or paper trades do not count.
 
-## 2. Engineering Goals
+> Scope note: **only the Thetanuts options trade must be on mainnet.** The GASX futures trade on Sui may run on testnet.
 
-- Fully on-chain GASX trading and settlement.
-- Frontend completely abstracted from implementation details.
-- C++ for latency-sensitive trading/risk/pricing runtime.
-- Python for data science, model training and inference services.
-- TypeScript for APIs, Sui client integration, wallet integration and Thetanuts integration.
-- Move for Sui smart contracts.
-- Open-source modules wherever they reduce implementation risk.
-- Hard risk controls independent of AI decisions.
+## Engineering Principles
 
-## 3. Explicit Non-Goals for the Hackathon
+- Fully on-chain trading and settlement on Sui (Move).
+- Web frontend, fully abstracted from backend implementation details.
+- TypeScript for API, Sui integration and Thetanuts integration; Python for the AI/data stack.
+- Reuse audited/open-source components wherever practical.
+- Hard risk controls that the AI cannot bypass.
 
-- Building a new blockchain.
-- Building a generic oracle network from scratch.
-- Building a full cross-chain settlement protocol.
-- Supporting dozens of contract maturities.
-- Building a production-grade custody system.
-- Building an HFT-grade distributed matching cluster.
-- Reimplementing Thetanuts' options protocol.
+## Non-Goals (This Hackathon)
 
----
+- No new blockchain, no generic oracle network, no cross-chain settlement protocol.
+- No C++ engine, no NATS/event bus, no Kubernetes.
+- No DeepBook CLOB integration, no multiple maturities, no production custody.
+- No ETH-denominated settlement (USDC P&L is enough for the demo).
+- No reimplementing Thetanuts' options protocol.
 
-## 4. Recommended Build Order
+## Build Order
 
-The project should be built in this order to maximize the probability of a real trade.
+- **Phase 0 — Integration spike:** publish a tiny Move package on Sui testnet; connect a wallet; move USDC; run Thetanuts MCP; verify Thetanuts SDK read flows **and OptionBook/OptionFactory trade execution on Base mainnet with a tiny budget** (highest-risk item — validate first).
+- **Phase 1 — Sui market:** Market/Order/Margin/Position/Settlement contracts; one manual on-chain trade.
+- **Phase 2 — Frontend:** wallet, market screen, order book, buy/sell form, positions.
+- **Phase 3 — EGSI + AI:** index from base fee + utilization + fee momentum + gas volatility; LightGBM forecast with confidence.
+- **Phase 4 — Thetanuts:** market data + MM pricing into the AI; add Thetanuts IV/skew to EGSI; RFQ hedge workflow.
+- **Phase 5 — Autonomous hedge:** the AI agent executes a real Thetanuts options trade on Base mainnet behind a tiny hard-coded budget.
 
-### Phase 0 — Integration spike
-
-Before building anything elaborate:
-
-1. Publish a tiny Move package on Sui testnet.
-2. Connect a Sui wallet.
-3. Execute a basic USDC transaction.
-4. Clone/build DeepBook V3 locally and verify the SDK/contract workflow.
-5. Run Thetanuts MCP and inspect live tool responses.
-6. Install the official Thetanuts client SDK.
-7. Verify Thetanuts market data and a read-only ETH pricing flow.
-8. Verify the Thetanuts AgentKit example in a **strictly limited test environment**.
-
-Do these first because integration surprises are more dangerous than model work.
-
-### Phase 1 — Sui market
-
-Build:
+## Demo Script
 
 ```text
-Market
-Order
-Margin
-Position
-Trade event
-Settlement
-```
-
-Get one deterministic manual trade working.
-
-### Phase 2 — Frontend trading terminal
-
-Build:
-
-```text
-wallet
-market screen
-orderbook
-buy/sell form
-positions
-transaction status
-```
-
-### Phase 3 — EGSI
-
-Implement the simplest index:
-
-```text
-base fee
-+ utilization
-+ fee momentum
-+ volatility
-```
-
-Then add more features.
-
-### Phase 4 — AI
-
-Implement:
-
-```text
-baseline
--> LightGBM/XGBoost
--> quantile forecast
--> regime classifier
--> sentiment
--> Thetanuts volatility signals
-```
-
-### Phase 5 — Thetanuts
-
-Implement:
-
-```text
-market data
-MM pricing
-option-chain analytics
-RFQ
-hedge selection
-position monitoring
-```
-
-### Phase 6 — Autonomous hedge
-
-Enable Thetanuts AgentKit execution behind a tiny hard-coded risk budget.
-
-### Phase 7 — Demo polish
-
-Add:
-
-```text
-AI terminal
-agent activity feed
-risk visualization
-Thetanuts hedge view
-on-chain transaction explorer links
-```
-
----
-
-## 5. Minimum Viable Demo
-
-The absolute minimum successful demo is:
-
-```text
-1. Connect Sui wallet
-2. Show live Ethereum network data
-3. Show EGSI
-4. Show AI forecast
-5. Deposit USDC
-6. Place BUY/SELL order
-7. Execute a real Sui transaction
-8. Show trade in on-chain state
-9. Show position
-10. Show Thetanuts-derived hedge analysis
-11. Request an actual Thetanuts quote
-12. Execute a tightly limited hedge if environment permits
-```
-
-The system should still be a valid GASX demo if the optional cross-chain transfer is unavailable.
-
----
-
-## 6. Hackathon Demo Script
-
-### Step 1 — Market opens
-
-```text
-EGSI = 418
-```
-
-### Step 2 — AI detects congestion
-
-```text
-Block utilization       ↑
-Base fee acceleration   ↑
-Mempool pressure        ↑
-DeFi activity           ↑
-Sentiment               ↑
-
-AI forecast:
-EGSI → 487
-P(EGSI > 500) = 72%
-```
-
-### Step 3 — Trader acts
-
-User buys 5 EGSI futures.
-
-### Step 4 — Sui settles the trade
-
-The transaction digest is shown in the UI.
-
-### Step 5 — Risk changes
-
-GASX computes increased ETH-related risk.
-
-### Step 6 — Thetanuts is invoked
-
-The system queries Thetanuts market/MM pricing and requests a hedge quote.
-
-### Step 7 — Autonomous hedge
-
-The AI agent proposes a hedge. Hard risk rules approve it. Thetanuts AgentKit executes within a tiny configured limit.
-
-### Step 8 — Explainability
-
-Show:
-
-```text
-Why GASX bought
-Why the hedge was selected
-What risk was reduced
-What the current EGSI forecast is
-```
-
-This produces a complete story rather than a collection of disconnected features.
-
----
-
-## 7. Production Evolution After the Hackathon
-
-If GASX moves beyond the hackathon:
-
-### Phase A
-
-- multiple maturities
-- deeper liquidity
-- stronger oracle security
-- better model calibration
-- formal Move verification where justified
-
-### Phase B
-
-- permissionless market creation
-- institutional API
-- market-maker SDK
-- advanced cross-margin
-- richer Thetanuts hedge strategies
-
-### Phase C
-
-- multi-chain user access
-- automated treasury management
-- additional blockspace indices
-- Base / Arbitrum / Solana congestion indices
-- standardized blockchain congestion derivatives
-
-Potential future products:
-
-```text
-ETH-GAS-1H
-ETH-GAS-4H
-ETH-GAS-24H
-L2-GAS-1H
-BASE-GAS-1H
-ARB-GAS-1H
-BLOB-GAS-1H
+1. EGSI = 418, market opens
+2. AI detects congestion: utilization ↑, base fee ↑, mempool ↑
+   Forecast: EGSI → 487, P(EGSI > 500) = 72%
+3. Trader buys 5 EGSI-1H contracts; Sui transaction digest shown in UI
+4. Risk engine flags increased ETH-correlated exposure
+5. GASX requests Thetanuts MM pricing + hedge RFQ
+6. Hard risk rules approve a hedge; the AI agent executes a real options trade via Thetanuts OptionBook on Base mainnet within limits
+7. UI explains: why we bought, why this hedge, what risk was reduced
 ```

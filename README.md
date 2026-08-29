@@ -2,148 +2,118 @@
 
 > **AI-native Ethereum Gas Futures Exchange on Sui, hedged with Thetanuts**
 >
-> Hackathon architecture: optimize for a credible end-to-end product and **at least one real on-chain trade**, while reusing audited/open-source infrastructure wherever practical.
+> Built for **MUBA HACKS 2026 — Thetanuts Track 02 (AI × OPTIONS)**. The bar: an AI agent places **at least one real on-chain options trade on Thetanuts (OptionBook / OptionFactory), live on Base mainnet** — not paper trading, not testnet. Frontend is a web app; GASX trading lives on Sui.
 
-See [GOALS.md](GOALS.md) for what we are trying to achieve and [ARCHITECTURE.md](ARCHITECTURE.md) for how the system is designed.
+## Reading Order
+
+1. **[README.md](README.md)** — you are here: the idea, the pitch, the two chains
+2. **[GLOSSARY.md](GLOSSARY.md)** — plain-English definitions of every web3/finance term used here
+3. **[GOALS.md](GOALS.md)** — what the demo must do, and the build order
+4. **[ARCHITECTURE.md](ARCHITECTURE.md)** — how to build each piece, for developers
+5. **[setup.md](setup.md)** — dev environment: tech stack, one-command setup, one-command teardown
 
 ---
 
-## What is GASX?
+## The Idea
 
-GASX turns Ethereum blockspace demand into a tradable derivative.
+GASX makes Ethereum network congestion tradeable.
 
-The platform creates an **Ethereum Gas Stress Index (EGSI)** from live Ethereum network conditions and uses AI to forecast its future value. Users trade short-dated EGSI futures against each other on **Sui**, posting **USDC collateral**. At expiry, the contract settles according to the final EGSI value, with P&L paid in an ETH-denominated settlement asset.
+It builds an index — the **Ethereum Gas Stress Index (EGSI, 0–1000)** — that measures how stressed Ethereum blockspace is (base fee, block utilization, mempool pressure, DeFi activity...), uses AI to forecast it, and lets users trade short-dated futures on that index with USDC.
 
-The system additionally uses **Thetanuts extensively as the external ETH-derivatives intelligence and hedging layer**:
+---
 
-- Thetanuts market data becomes an input to the AI/risk stack.
-- Thetanuts MM pricing and order data provide market-implied ETH volatility/skew signals.
-- Thetanuts RFQs are used to source executable hedge quotes.
-- Thetanuts positions are incorporated into GASX portfolio/risk calculations.
-- Thetanuts' AgentKit/action-provider path is used for autonomous hedge execution on Base, under hard safety limits.
-- Thetanuts MCP is used as a development/agent interface for discovery, live inspection, quote/RFQ workflows and transaction encoding. The MCP itself is not the production runtime dependency for state-changing execution.
+## The Two Chains
 
-Sui is the source of truth for the GASX market: order placement, collateral locking, positions, trades, oracle snapshots and settlement are on-chain.
+- **Sui (Move contracts)** — where the GASX futures market lives: order book, margin, positions, settlement. Cheap, fast, and the product differentiator.
+- **Base / Thetanuts** — the ETH options venue. It does two jobs: (1) its options data (IV, skew, MM pricing) feeds the AI forecast, and (2) it's where the AI agent hedges.
+
+---
+
+## Why Thetanuts Matters Here
+
+Trading gas futures creates ETH-correlated risk (gas spikes when ETH volatility spikes). GASX doesn't build its own options exchange — it uses Thetanuts to hedge.
+
+That also happens to be exactly what the MUBA track demands: an AI agent that places at least one real options trade on Thetanuts' OptionBook/OptionFactory, live on Base mainnet. Our pitch: **"an autonomous hedging agent for a gas-futures exchange"** — track idea #3.
 
 ---
 
 ## Problem
 
-Ethereum gas demand can change very quickly. A user can observe cheap gas at one moment and severe congestion later, but there is no simple, purpose-built market in GASX form for trading that future network congestion.
-
-GASX addresses three related problems:
-
-1. **Congestion risk is hard to quantify**
-   Gas price alone is an incomplete measure of future blockspace demand.
-
-2. **There is limited direct price discovery for future Ethereum blockspace stress**
-   Traders can speculate on ETH and ETH derivatives, but that is not the same as directly trading expected gas congestion.
-
-3. **DeFi derivatives platforms need better cross-venue risk management**
-   Gas exposure can create correlated ETH risk. Thetanuts gives GASX an existing derivatives venue from which to obtain market information and hedge that risk instead of building another options protocol.
+1. Gas congestion risk is hard to quantify — gas price alone is a poor measure of future blockspace demand.
+2. There is no direct price discovery for future Ethereum blockspace stress.
+3. Gas exposure creates correlated ETH risk; a venue like Thetanuts lets us hedge it instead of building another options protocol.
 
 ---
 
-## Solution
-
-### Product
-
-GASX offers short-dated futures on the **Ethereum Gas Stress Index (EGSI)**.
-
-Example market:
+## The Product
 
 ```text
 EGSI-1H
 
-Underlying: Ethereum Gas Stress Index
-Expiry:     1 hour
-Collateral: USDC
-Settlement: ETH-denominated P&L
+Underlying:  Ethereum Gas Stress Index (0–1000)
+Expiry:      1 hour
+Collateral:  USDC
+Settlement:  USDC P&L (linear payoff)
 
 Example:
-Current EGSI = 420
-Trader buys 5 contracts at 425
+Current EGSI = 420, trader buys 5 contracts at 425
 Final EGSI = 500
-
 Long P&L = (500 - 425) × contract_multiplier × 5
 ```
 
-The first hackathon version should launch **one market** well instead of many maturities.
-
-Recommended initial market:
-
-```text
-EGSI-1H
-```
-
-Later:
-
-```text
-EGSI-15M
-EGSI-1H
-EGSI-4H
-EGSI-24H
-```
-
-### Why an index instead of raw Gwei?
-
-Raw gas price is noisy and can be distorted by short-lived fee spikes. EGSI combines:
-
-- base fee
-- priority fee
-- gas used
-- block utilization
-- transaction throughput
-- mempool pressure
-- gas momentum
-- fee volatility
-- DeFi activity
-- DEX activity
-- liquidation activity
-- ETH volatility
-- stablecoin activity
-- market/social sentiment
-- Thetanuts ETH options market signals
-
-The index therefore describes **network stress and future blockspace demand**, not simply today's gas price.
+Hackathon scope: **one market (EGSI-1H)**, done well.
 
 ---
 
-## What Is Actually Novel?
+## Why Sui?
 
-The novelty should not be marketed as "AI trading" alone.
+Sui hosts the GASX futures market; Base (Thetanuts) hosts the hedge. Why not build everything on one EVM chain?
 
-The stronger product thesis is:
+1. **You can't trade gas futures on the chain that charges the gas.** Building the market on Ethereum/Base would be self-referential: every order pays gas, and the congestion being traded would distort the market itself. Sui's sub-cent, predictable fees keep the market neutral.
+2. **Performance matches the product.** Order books need speed: Sui offers ~0.4s finality and parallel execution for high throughput — right for 1-hour futures and frequent oracle updates.
+3. **Move is safer for financial code.** Its resource model makes assets impossible to copy or lose by accident, removing whole classes of Solidity bugs.
+4. **It proves the thesis generalizes.** Demonstrating the market on a non-EVM chain while hedging on Base shows blockspace derivatives are ecosystem-agnostic — future markets: BASE-GAS, ARB-GAS, BLOB-GAS.
+5. **Risk isolation.** The judged deliverable (a real Thetanuts options trade on Base mainnet) does not depend on Sui. If Sui breaks, the autonomous agent still meets the bar.
 
-> **GASX creates a new financial primitive around Ethereum blockspace demand.**
+---
 
-AI turns heterogeneous network and market signals into a forecastable index. Sui provides the native on-chain market and settlement layer. Thetanuts provides an external ETH derivatives market that supplies market-implied information and hedging capability.
+## The Moving Parts (5 Components)
 
-This creates a closed loop:
+1. **Frontend** — React web app: EGSI dashboard, order form, positions, hedge view
+2. **API** — TypeScript gateway: REST/WS, prepares Sui transactions, runs the Thetanuts adapter
+3. **AI service** — Python: ingests Ethereum data → computes EGSI → LightGBM forecast → publishes oracle updates to Sui
+4. **Sui contracts** — Move: market, order, margin, position, oracle, settlement, events (linear payoff in USDC)
+5. **Thetanuts adapter** — pulls MM pricing/RFQ quotes, executes trades via the autonomous wallet
 
 ```text
-Ethereum activity
-      ↓
-AI network forecast
-      ↓
-EGSI
-      ↓
-Gas futures market on Sui
-      ↓
-Portfolio risk
-      ↓
-Thetanuts ETH hedge
-      ↓
-New market information
-      ↓
-AI updates forecast
+README.md / GOALS.md / ARCHITECTURE.md / GLOSSARY.md / setup.md
+frontend/     React web app (Sui dApp Kit)
+api/          TypeScript: REST/WS gateway, Sui + Thetanuts adapters
+ai/           Python: ingestion, EGSI, forecast model, inference
+contracts/    Move packages (market, order, margin, position, oracle, settlement, events)
+database/     PostgreSQL
+scripts/      setup.ps1 / setup.sh / teardown.ps1 / teardown.sh
 ```
 
 ---
 
-## Documentation
+## The Demo Story (One Narrative)
 
-| Document | Purpose |
-|---|---|
-| [GOALS.md](GOALS.md) | What we are trying to achieve: goals, non-goals, build order, minimum demo |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | System design: components, contracts, data flow, risk and security |
+1. User connects Sui wallet, sees EGSI = 418 and AI forecast (EGSI → 487, 72% chance of >500)
+2. User buys 5 EGSI-1H contracts — **real on-chain trade on Sui**
+3. Risk engine notices the position added ETH-correlated exposure
+4. Agent pulls Thetanuts option pricing, proposes a hedge
+5. Hard-coded limits approve it; autonomous wallet executes — **real options trade on Thetanuts, Base mainnet** ← the judged bar
+6. UI explains: why we bought, why this hedge, what risk was reduced
+
+---
+
+## The Safety Line
+
+The AI can request actions but never bypass policy: position caps, 1% slippage, 70% min confidence, tiny hedge budget, isolated wallet. Everything state-changing goes:
+
+```text
+AI → policy → adapter → transaction
+```
+
+That's the whole system — a small product (one market, one model, one hedge path) built specifically so the critical path to that one real Thetanuts trade is as short as possible.
