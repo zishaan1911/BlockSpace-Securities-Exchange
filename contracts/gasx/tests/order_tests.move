@@ -57,7 +57,7 @@ module gasx::order_tests {
         ts::return_shared(placed);
 
         sui::transfer::public_transfer(buyer_margin, BUYER);
-        market::share_for_testing(market);
+        market::destroy_for_testing(market);
         ts::end(scenario);
     }
 
@@ -156,7 +156,7 @@ module gasx::order_tests {
         order::destroy_order_for_testing(sell_order);
         sui::transfer::public_transfer(buyer_margin, BUYER);
         sui::transfer::public_transfer(seller_margin, SELLER);
-        market::share_for_testing(market);
+        market::destroy_for_testing(market);
         ts::end(scenario);
     }
 
@@ -187,7 +187,7 @@ module gasx::order_tests {
         order::destroy_order_for_testing(sell_order);
         sui::transfer::public_transfer(buyer_margin, BUYER);
         sui::transfer::public_transfer(seller_margin, SELLER);
-        market::share_for_testing(market);
+        market::destroy_for_testing(market);
         ts::end(scenario);
     }
 
@@ -221,7 +221,7 @@ module gasx::order_tests {
         order::destroy_order_for_testing(sell_order);
         sui::transfer::public_transfer(buyer_side_margin, BUYER);
         sui::transfer::public_transfer(seller_side_margin, BUYER);
-        market::share_for_testing(market);
+        market::destroy_for_testing(market);
         ts::end(scenario);
     }
 }

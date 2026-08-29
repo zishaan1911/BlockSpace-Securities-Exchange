@@ -27,7 +27,7 @@ module gasx::market_tests {
         assert!(!market::is_settled(&market), 1);
         assert!(market::margin_ratio_bps(&market) == 1_000, 2);
 
-        market::share_for_testing(market);
+        market::destroy_for_testing(market);
         ts::end(scenario);
     }
 
@@ -47,7 +47,7 @@ module gasx::market_tests {
         assert!(!market::is_paused(&market), 1);
 
         sui::transfer::public_transfer(cap, ADMIN);
-        market::share_for_testing(market);
+        market::destroy_for_testing(market);
         ts::end(scenario);
     }
 
@@ -62,7 +62,7 @@ module gasx::market_tests {
 
         let _ = market::settlement_price(&market);
 
-        market::share_for_testing(market);
+        market::destroy_for_testing(market);
         ts::end(scenario);
     }
 
@@ -80,7 +80,7 @@ module gasx::market_tests {
         market::unpause(&cap, &mut market);
 
         sui::transfer::public_transfer(cap, ADMIN);
-        market::share_for_testing(market);
+        market::destroy_for_testing(market);
         ts::end(scenario);
     }
 }
