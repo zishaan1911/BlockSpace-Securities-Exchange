@@ -53,7 +53,12 @@ else
   PYTEST=""
 fi
 if [ -n "$PYTEST" ]; then
-  (cd "$REPO_ROOT/ai" && $PYTEST)
+  # Disabled: pytest's setuptools-entrypoint plugin autoload otherwise
+  # picks up whatever's globally registered on the host (e.g. ROS2's
+  # launch_testing pytest11 plugin), unrelated to this project and not
+  # necessarily even importable. Our own conftest.py/tests are found by
+  # directory walking regardless of this setting.
+  (cd "$REPO_ROOT/ai" && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 $PYTEST)
   AI_STATUS=$?
   if [ "$AI_STATUS" -ne 0 ]; then
     echo "!! AI service tests FAILED"

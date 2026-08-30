@@ -38,6 +38,19 @@ cd ai
 venv/bin/pytest
 ```
 
+If pytest errors out importing an unrelated globally-registered plugin
+(e.g. `ModuleNotFoundError: No module named 'lark'` from ROS2's
+`launch_testing` package, if you have ROS installed) rather than running
+this project's own tests, disable pytest's setuptools-entrypoint plugin
+autoload — it doesn't affect this project's own `conftest.py`/tests,
+which pytest finds by directory walking regardless:
+
+```bash
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 venv/bin/pytest
+```
+
+`scripts/test-all.sh` already sets this for you.
+
 **What's actually verified in Claude's sandbox vs. what needs verification
 on your machine** — the same split this project already uses for Move
 contracts (see `GASX_PROJECT_HANDOFF.md` §1) applies here for the same
