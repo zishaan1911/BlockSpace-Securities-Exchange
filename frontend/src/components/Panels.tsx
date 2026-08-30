@@ -75,6 +75,12 @@ export function MarketPanel({ market, nowMs }: { market: MarketState; nowMs: num
         <span className="panel-note">{market.marketId.slice(0, 10)}…</span>
       </div>
 
+      {market.devMode && (
+        <div className="notice warn" style={{ marginBottom: '1rem' }}>
+          Dev market: the gasx contracts are not deployed yet, so this market is simulated
+          by the gateway. Orders are disabled until they are (see blockchain/sui/README.md).
+        </div>
+      )}
       {market.settled && (
         <div className="notice" style={{ marginBottom: '1rem' }}>
           Settled at {market.settlementPrice ?? '—'}. This market is closed to new orders.

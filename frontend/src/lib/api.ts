@@ -28,6 +28,11 @@ export interface MarketState {
   settled: boolean;
   settlementPrice: number | null;
   oracle: OracleState;
+  /** True when the gateway is serving the synthetic dev market
+   * (blockchain/sui's dev-market mode) — the UI labels it as such. */
+  devMode?: boolean;
+  /** The Sui network the (real) market lives on. */
+  network?: string;
 }
 
 export interface EgsiComponents {
