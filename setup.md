@@ -46,8 +46,9 @@ Open WSL first: `wsl -d Ubuntu` from PowerShell, or launch the "Ubuntu" app.
 
 ```bash
 # 1. Base tools and PostgreSQL (Requires Ubuntu 24.04 for PG 16 by default)
+# libgomp1 is the OpenMP runtime LightGBM needs at import time.
 sudo apt update
-sudo apt install -y curl git ca-certificates gnupg build-essential unzip \
+sudo apt install -y curl git ca-certificates gnupg build-essential unzip libgomp1 \
   python3 python3-pip python3-venv postgresql postgresql-contrib
 
 # 2. Database setup
