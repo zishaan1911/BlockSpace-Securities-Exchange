@@ -22,13 +22,16 @@ simulation, and validating an order is worth submitting on-chain at all.
 | `inventory_tracker` | net position + realized PnL from a fill stream, mirrors `gasx::position` |
 | `pricing` | `QuoteEngine` — model output -> fair_price/bid/ask/quote_size (§20.1 Pricing Runtime) |
 | `market_data_publisher` | in-process pub/sub for book and quote updates |
+| `protocol` | `EngineService` — stable facade wiring the above into one market; the future N-API binding wraps this 1:1 |
 
 This covers all seven components ARCHITECTURE.md §16.1 lists for the C++
 order engine (`OrderBook`, `MatchingEngine`, `PriceTimePriority` — folded
 into `MatchingEngine` rather than a separate class, since price-time
 priority is `OrderBook`'s ordering plus `MatchingEngine`'s walk order, not
 an independent component — `QuoteEngine`, `InventoryTracker`,
-`PreTradeRisk`, `MarketDataPublisher`).
+`PreTradeRisk`, `MarketDataPublisher`), plus the `protocol` module
+(`EngineService`) that wires all of them together behind one stable
+interface for the future N-API binding.
 
 ## Cross-runtime parity with contracts/gasx (Move)
 
@@ -98,3 +101,19 @@ elsewhere).
   not a network transport. It's the hook point where a real one (the
   WebSocket server in the TypeScript API gateway, ARCHITECTURE.md §22/§24)
   plugs in later.
+- **`protocol::EngineService` is the stable facade the future N-API
+  binding wraps 1:1** — one instance represents one market (not one
+  trader), with a `RiskLimits`+`PricingConfig` pair fixing its behavior
+  at construction. `protocol/messages.hpp` defines plain request/response
+  structs with **no serialization**: N-API marshals fields directly
+  between JS and C++, so there's no wire format to design here. A
+  rejected `place_order` mutates nothing — no order id assigned, no book
+  change, no inventory update — it just returns `RejectedRisk` plus a
+  reason string. `available_margin` is caller-supplied per request
+  (never tracked locally) for the same reason `AccountState` already is
+  in `pre_trade_risk`: Sui remains the source of truth for collateral,
+  and this engine must not duplicate it. Each trader's `InventoryTracker`
+  is created lazily on first order and starts at zero — it reflects only
+  fills seen through this `EngineService` instance, not the trader's true
+  on-chain position, so the API gateway must reconcile with chain state
+  separately.

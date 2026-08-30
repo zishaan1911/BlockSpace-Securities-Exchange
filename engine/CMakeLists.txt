@@ -16,6 +16,7 @@ add_library(gasx_engine STATIC
   src/inventory_tracker.cpp
   src/pricing.cpp
   src/market_data_publisher.cpp
+  src/protocol/engine_service.cpp
 )
 target_include_directories(gasx_engine PUBLIC include)
 
@@ -44,6 +45,7 @@ if(GASX_ENGINE_BUILD_TESTS)
     tests/pricing_tests.cpp
     tests/market_data_publisher_tests.cpp
     tests/move_parity_tests.cpp
+    tests/protocol_engine_service_tests.cpp
   )
   target_link_libraries(gasx_engine_tests PRIVATE gasx_engine GTest::gtest_main)
 
