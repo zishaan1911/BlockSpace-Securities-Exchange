@@ -4,6 +4,7 @@
  */
 import { loadConfigFromEnv as loadSuiConfig, type SuiAdapterConfig } from '@gasx/sui-adapter';
 import { loadConfigFromEnv as loadThetanutsConfig, type ThetanutsAdapterConfig } from '@gasx/thetanuts-adapter';
+import type { ExposureConfig } from './exposure.js';
 import type { RiskPolicyConfig } from './riskPolicy.js';
 
 export interface GatewayConfig {
@@ -14,6 +15,7 @@ export interface GatewayConfig {
   sui: SuiAdapterConfig;
   thetanuts: ThetanutsAdapterConfig;
   riskPolicy: RiskPolicyConfig;
+  exposureConfig: ExposureConfig;
 }
 
 function readEnv(name: string): string | undefined {
@@ -26,6 +28,16 @@ function readEnvInt(name: string, fallback: number): number {
   const n = Number.parseInt(raw, 10);
   if (!Number.isFinite(n)) {
     throw new Error(`${name} must be an integer, got '${raw}'`);
+  }
+  return n;
+}
+
+function readEnvFloat(name: string, fallback: number): number {
+  const raw = readEnv(name);
+  if (!raw) return fallback;
+  const n = Number.parseFloat(raw);
+  if (!Number.isFinite(n)) {
+    throw new Error(`${name} must be a number, got '${raw}'`);
   }
   return n;
 }
@@ -49,6 +61,16 @@ export function loadGatewayConfig(): GatewayConfig {
       maxSlippageBps: readEnvInt('GASX_API_MAX_SLIPPAGE_BPS', 100), // 1%
       minModelConfidence: readEnvInt('GASX_API_MIN_MODEL_CONFIDENCE_PCT', 70) / 100,
       maxHedgeNotional: readEnvInt('GASX_API_MAX_HEDGE_NOTIONAL', 1000),
+    },
+    exposureConfig: {
+      // See exposure.ts's header: this beta is a configured assumption,
+      // not a measured correlation — there is no EGSI/ETH price history
+      // to regress against yet. 0.5 is a deliberately middling
+      // placeholder, not a derived figure.
+      ethBeta: readEnvFloat('GASX_API_ETH_BETA', 0.5),
+      hedgeThresholdNotional: readEnvInt('GASX_API_HEDGE_THRESHOLD_NOTIONAL', 5000),
+      hedgeContracts: readEnvInt('GASX_API_HEDGE_CONTRACTS', 1),
+      offerDeadlineMinutes: readEnvInt('GASX_API_HEDGE_OFFER_DEADLINE_MINUTES', 10),
     },
   };
 }

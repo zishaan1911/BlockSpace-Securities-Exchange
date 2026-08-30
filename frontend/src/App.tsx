@@ -1,63 +1,104 @@
-import { useMarketState } from './hooks/useMarketState';
-import { EGSIChart } from './components/EGSIChart';
-import { EGSIGauge } from './components/EGSIGauge';
-import { ForecastCard } from './components/ForecastCard';
-import { Header } from './components/Header';
-import { HedgeView } from './components/HedgeView';
-import { MarketMetaCard } from './components/MarketMeta';
-import { OrderBook } from './components/OrderBook';
-import { OrderForm } from './components/OrderForm';
-import { PositionsTable } from './components/PositionsTable';
+/**
+ * The market screen. One page, because there is one market
+ * (ARCHITECTURE.md §12: "Product: EGSI-1H futures, single market") —
+ * navigation between screens would be chrome around a single view.
+ *
+ * Layout follows the read-then-act order a trader actually works in:
+ * the index reading and what's driving it on the left, then forecast,
+ * market terms, order ticket and hedge on the right.
+ */
+import { useCallback, useEffect, useState } from 'react';
+import { ConnectButton } from '@mysten/dapp-kit-react/ui';
+import { api, ApiError, type MarketResponse } from './lib/api';
+import { EgsiGauge } from './components/EgsiGauge';
+import { DriverBars } from './components/DriverBars';
+import { ForecastPanel, MarketPanel } from './components/Panels';
+import { OrderTicket } from './components/OrderTicket';
+import { HedgePanel } from './components/HedgePanel';
+
+const POLL_MS = 15_000;
 
 export default function App() {
-  const { state, mode, submitting, submitOrder } = useMarketState();
+  const [data, setData] = useState<MarketResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
-  if (!state) {
-    return (
-      <div className="boot">
-        <Header mode="mock" />
-        <div className="boot-note">Connecting to market feed…</div>
-      </div>
-    );
-  }
+  const load = useCallback(async () => {
+    try {
+      setData(await api.getMarket());
+      setError(null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Something went wrong loading the market.');
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+    const poll = setInterval(() => {
+      void load();
+      setNowMs(Date.now());
+    }, POLL_MS);
+    return () => clearInterval(poll);
+  }, [load]);
 
   return (
-    <div className="app">
-      <Header mode={mode} />
-      <main className="grid">
-        <section className="col-left">
-          <div className="card">
-            <h2>Ethereum Gas Stress Index</h2>
-            <EGSIGauge value={state.egsi} />
+    <div className="shell">
+      <header className="masthead">
+        <h1 className="wordmark">
+          GASX<span>Ethereum gas futures</span>
+        </h1>
+        <ConnectButton />
+      </header>
+
+      {error && !data && (
+        <div className="notice bad">
+          {error} Start the gateway with <code>npm run dev</code> in <code>api/</code>, then reload.
+        </div>
+      )}
+
+      {!error && !data && <p className="empty">Loading the market…</p>}
+
+      {data && (
+        <>
+          {error && (
+            <div className="notice warn" style={{ marginBottom: 'var(--gutter)' }}>
+              {error} Showing the last reading received.
+            </div>
+          )}
+
+          <div className="grid">
+            <div className="stack">
+              <div className="panel">
+                <div className="panel-head">
+                  <h2>Gas Stress Index</h2>
+                  <span className="panel-note">
+                    {data.egsi ? `block ${data.egsi.block_number}` : 'no reading'}
+                  </span>
+                </div>
+                <EgsiGauge score={data.egsi?.score ?? null} />
+              </div>
+
+              <div className="panel">
+                <div className="panel-head">
+                  <h2>What's driving it</h2>
+                </div>
+                <DriverBars components={data.egsi?.components ?? null} />
+              </div>
+            </div>
+
+            <div className="stack">
+              <ForecastPanel forecast={data.forecast} />
+              <MarketPanel market={data.market} nowMs={nowMs} />
+              <OrderTicket market={data.market} onFilled={load} />
+              <HedgePanel egsiLevel={data.egsi?.score ?? null} />
+            </div>
           </div>
-          <MarketMetaCard meta={state.meta} />
-        </section>
+        </>
+      )}
 
-        <section className="col-mid">
-          <div className="card chart-card">
-            <h2>EGSI — last 3 minutes + forecast</h2>
-            <EGSIChart history={state.history} forecast={state.forecast} />
-          </div>
-          <ForecastCard forecast={state.forecast} current={state.egsi} />
-        </section>
-
-        <section className="col-right">
-          <OrderBook book={state.orderBook} />
-          <OrderForm
-            state={state}
-            mode={mode}
-            submitting={submitting}
-            onSubmit={submitOrder}
-          />
-        </section>
-
-        <section className="col-bottom-a">
-          <PositionsTable positions={state.positions} />
-        </section>
-        <section className="col-bottom-b">
-          <HedgeView hedge={state.hedge} />
-        </section>
-      </main>
+      <footer className="foot">
+        Futures settle on Sui. Hedges trade on Thetanuts, on Base mainnet, with real funds.
+      </footer>
     </div>
   );
 }

@@ -5,6 +5,16 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
-    host: '127.0.0.1',
+    // The gateway runs separately (see api/README.md). Proxying keeps the
+    // browser same-origin, so no CORS config is needed on the gateway.
+    proxy: {
+      '/api': {
+        target: process.env.GASX_API_URL || 'http://localhost:3000',
+        changeOrigin: true,
+      },
+    },
+  },
+  test: {
+    environment: 'jsdom',
   },
 });

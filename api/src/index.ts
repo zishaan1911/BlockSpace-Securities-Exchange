@@ -20,6 +20,7 @@ const app = buildServer({
   hedgeProvider: new ThetanutsHedgeProvider(config.thetanuts),
   aiClient: new HttpAiClient(config.aiServiceUrl),
   riskPolicy: config.riskPolicy,
+  exposureConfig: config.exposureConfig,
 });
 
 app

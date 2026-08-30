@@ -98,6 +98,31 @@ export interface HedgeRiskCheckInput {
 }
 
 /**
+ * MIN_MODEL_CONFIDENCE on its own, without MAX_HEDGE_NOTIONAL.
+ *
+ * Exists because the two constants apply at different points and to
+ * different quantities. MAX_HEDGE_NOTIONAL caps what the hedge
+ * *spends* (the quoted option premium) — but that number isn't known
+ * until a market maker has actually quoted, which requires first
+ * submitting an RFQ, which costs real gas on Base mainnet. So the
+ * confidence floor is checked first, on its own, to avoid spending gas
+ * on a hedge that was never going to be allowed anyway.
+ *
+ * Applying MAX_HEDGE_NOTIONAL to the *exposure* being hedged as a
+ * stand-in would be a category error: a large book being hedged with a
+ * cheap option is exactly the normal case, and comparing exposure
+ * against a premium budget would reject it.
+ */
+export function checkHedgeConfidence(modelConfidence: number, policy: RiskPolicyConfig): RiskCheckResult {
+  if (modelConfidence < policy.minModelConfidence) {
+    return reject(
+      `model confidence (${modelConfidence}) is below MIN_MODEL_CONFIDENCE (${policy.minModelConfidence})`,
+    );
+  }
+  return accept();
+}
+
+/**
  * Risk check for the AI-driven hedge path (ARCHITECTURE.md §7.2, §8,
  * §10's "Approve (hard limits passed)" step). Applies
  * MIN_MODEL_CONFIDENCE and MAX_HEDGE_NOTIONAL. This governs whether a

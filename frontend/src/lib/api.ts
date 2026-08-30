@@ -1,96 +1,150 @@
-import type {
-  MarketService,
-  MarketState,
-  OrderRequest,
-  OrderResult,
-} from './types';
-
-const POLL_MS = 5_000;
-
 /**
- * Live backend client. Talks only to stable domain endpoints
- * (ARCHITECTURE.md §2): the UI never knows how the backend is composed.
+ * The frontend's only contact with the backend (ARCHITECTURE.md §2:
+ * "the UI only talks to stable domain APIs"). Nothing here imports a
+ * Sui or Thetanuts SDK — the gateway hides both. The single exception
+ * is signing, which by definition must happen in the user's own wallet;
+ * the gateway hands back a serialized transaction and the wallet signs
+ * it (see components/OrderTicket.tsx).
  */
-export class ApiMarketService implements MarketService {
-  readonly isMock = false;
 
-  private listeners = new Set<(state: MarketState) => void>();
-  private state: MarketState | null = null;
-  private timer?: ReturnType<typeof setInterval>;
-  private ws?: WebSocket;
+export interface OracleState {
+  oracleId: string;
+  price: number;
+  hasPrice: boolean;
+  lastUpdateMs: number;
+  maxStalenessMs: number;
+  maxPrice: number;
+  isFreshApprox: boolean;
+}
 
+export interface MarketState {
+  marketId: string;
+  underlying: string;
+  expiryMs: number;
+  contractMultiplier: number;
+  tickSize: number;
+  marginRatioBps: number;
+  paused: boolean;
+  settled: boolean;
+  settlementPrice: number | null;
+  oracle: OracleState;
+}
+
+export interface EgsiComponents {
+  base_fee: number;
+  utilization: number;
+  mempool_pressure: number;
+  fee_momentum: number;
+  gas_volatility: number;
+  dex_activity: number;
+  thetanuts_iv: number | null;
+}
+
+export interface EgsiSnapshot {
+  market: string;
+  score: number;
+  components: EgsiComponents;
+  block_number: number;
+  timestamp: number;
+}
+
+export interface Forecast {
+  market: string;
+  expected_egsi: number;
+  confidence: number;
+  p_tail_500: number;
+  model_version: string;
+}
+
+export interface MarketResponse {
+  market: MarketState;
+  egsi: EgsiSnapshot | null;
+  forecast: Forecast | null;
+}
+
+export interface PreparedTransaction {
+  transactionJson: string;
+  summary: Record<string, string | number | boolean>;
+}
+
+export interface Exposure {
+  egsiNotional: number;
+  ethBetaNotional: number;
+  breached: boolean;
+  suggestedOptionType: 'CALL' | 'PUT' | null;
+}
+
+export interface HedgeCandidate {
+  quotationId: string;
+  offeror: string;
+  pricePerContract: number;
+}
+
+export interface HedgeEvaluation {
+  exposure: Exposure;
+  forecast?: Forecast;
+  candidate?: HedgeCandidate;
+  quotedNotional?: number;
+  approved?: boolean;
+  reason?: string | null;
+  hedged: boolean;
+  note?: string;
+}
+
+/** Carries the HTTP status so callers can distinguish a rejected
+ * request (422 risk policy, 400 validation) from an outage (502/503),
+ * which the UI reports very differently. */
+export class ApiError extends Error {
   constructor(
-    private readonly baseUrl: string,
-    private readonly wsUrl: string,
-  ) {}
-
-  start(): void {
-    this.refresh();
-    this.timer = setInterval(() => this.refresh(), POLL_MS);
-    this.openSocket();
-  }
-
-  stop(): void {
-    if (this.timer) clearInterval(this.timer);
-    this.timer = undefined;
-    this.ws?.close();
-    this.ws = undefined;
-  }
-
-  subscribe(fn: (state: MarketState) => void): () => void {
-    this.listeners.add(fn);
-    if (this.state) fn(this.state);
-    return () => this.listeners.delete(fn);
-  }
-
-  async submitOrder(order: OrderRequest): Promise<OrderResult> {
-    const res = await fetch(`${this.baseUrl}/api/v1/orders`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(order),
-    });
-    if (!res.ok) {
-      return { ok: false, message: `Order rejected (HTTP ${res.status}).` };
-    }
-    const body = (await res.json()) as { digest?: string };
-    return { ok: true, message: 'Order accepted by the API.', digest: body.digest };
-  }
-
-  private async refresh(): Promise<void> {
-    try {
-      const res = await fetch(`${this.baseUrl}/api/v1/market-state`);
-      if (!res.ok) return;
-      this.state = (await res.json()) as MarketState;
-      this.emit();
-    } catch {
-      // Backend down: keep last known state, stay silent.
-    }
-  }
-
-  private openSocket(): void {
-    try {
-      this.ws = new WebSocket(this.wsUrl);
-      this.ws.onmessage = (ev: MessageEvent<string>) => {
-        try {
-          this.state = JSON.parse(ev.data) as MarketState;
-          this.emit();
-        } catch {
-          // Ignore malformed frames.
-        }
-      };
-      this.ws.onclose = () => {
-        // Polling continues regardless; optionally reconnect after a beat.
-        setTimeout(() => {
-          if (this.timer) this.openSocket();
-        }, 2_000);
-      };
-    } catch {
-      // WS unavailable: polling still works.
-    }
-  }
-
-  private emit(): void {
-    if (!this.state) return;
-    for (const fn of this.listeners) fn(this.state);
+    message: string,
+    public readonly status: number,
+  ) {
+    super(message);
+    this.name = 'ApiError';
   }
 }
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      ...init,
+      headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) },
+    });
+  } catch {
+    throw new ApiError('Cannot reach the GASX gateway. Is it running?', 0);
+  }
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    const message =
+      body && typeof body === 'object' && 'error' in body && typeof body.error === 'string'
+        ? body.error
+        : `Request failed (${res.status})`;
+    throw new ApiError(message, res.status);
+  }
+  return body as T;
+}
+
+export const api = {
+  getMarket: () => request<MarketResponse>('/api/v1/market'),
+
+  prepareOrder: (input: {
+    trader: string;
+    marginAccountId: string;
+    isBid: boolean;
+    price: number;
+    quantity: number;
+  }) => request<PreparedTransaction>('/api/v1/orders/prepare', { method: 'POST', body: JSON.stringify(input) }),
+
+  prepareOpenAccount: (trader: string) =>
+    request<PreparedTransaction>('/api/v1/account/prepare-open', {
+      method: 'POST',
+      body: JSON.stringify({ trader }),
+    }),
+
+  assessHedge: (input: { netContracts: number; egsiLevel: number }) =>
+    request<{ exposure: Exposure }>('/api/v1/hedge/assess', { method: 'POST', body: JSON.stringify(input) }),
+
+  evaluateHedge: (input: { netContracts: number; egsiLevel: number }) =>
+    request<HedgeEvaluation>('/api/v1/hedge/evaluate', { method: 'POST', body: JSON.stringify(input) }),
+};

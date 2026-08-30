@@ -1,21 +1,68 @@
 /**
- * Bridges blockchain/thetanuts's live ETH VolSignal into the Python AI
- * service's EGSI cycle (ai/main.py's POST /cycle, schemas.py's
- * CycleRequest) — closing the gap ai/README.md flagged explicitly:
- * "There's no live process wiring blockchain/thetanuts's TypeScript
- * output into this endpoint yet — that's the API gateway's job once
- * Phase 2 exists." This is that wiring.
+ * ARCHITECTURE.md §10's Hedge Flow, wired end-to-end (except the final
+ * execution step — see below).
  *
- * Deliberately just a read-and-forward: it does not evaluate
- * ARCHITECTURE.md §8's hard risk policy (see riskPolicy.ts's
- * checkHedgeRisk) or settle anything on Thetanuts — this only keeps
- * EGSI's Thetanuts IV component current. Actually requesting a hedge
- * quote (blockchain/thetanuts's createHedgeRequest) and evaluating a
- * candidate against the risk policy is a separate, not-yet-built route;
- * see api/README.md.
+ * Four routes:
+ *
+ *   POST /api/v1/hedge/sync-signal   pulls MM pricing/options data and
+ *                                    forwards ETH IV/skew into the AI
+ *                                    service's EGSI cycle
+ *   POST /api/v1/hedge/assess        computes ETH-beta exposure and
+ *                                    reports whether it breached the
+ *                                    threshold (§10 step 1)
+ *   POST /api/v1/hedge/evaluate      the full chain: assess exposure ->
+ *                                    pull a live vol signal -> request an
+ *                                    RFQ -> collect the best candidate ->
+ *                                    run it through §8's hard risk policy
+ *                                    -> report approve/reject
+ *   POST /api/v1/hedge/candidate     re-poll an existing RFQ for offers
+ *
+ * **What /evaluate deliberately does NOT do: execute.** It stops at
+ * §10's "R->>TN: Approve (hard limits passed)" and returns the decision.
+ * It never calls Thetanuts' settleQuotationEarly/settleQuotation, so no
+ * options position is ever opened by this gateway. That final step is
+ * Phase 5's autonomous execution, it spends real money on Base mainnet,
+ * and it should be a deliberate, separately-reviewed addition rather
+ * than something that quietly starts happening because an exposure
+ * threshold tripped. The approval decision this route produces is
+ * exactly the input that step would consume.
+ *
+ * Note that /evaluate DOES have a real on-chain side effect even so:
+ * createHedgeRequest submits an RFQ transaction to OptionFactory on Base
+ * mainnet, which costs gas and is publicly visible. It is a POST for
+ * that reason. It requires a configured hedge wallet
+ * (GASX_THETANUTS_HEDGE_WALLET_PRIVATE_KEY) and will fail loudly
+ * without one.
  */
 import type { FastifyInstance } from 'fastify';
 import type { GatewayDeps } from '../server.js';
+import { assessExposure } from '../exposure.js';
+import { checkHedgeConfidence, checkHedgeRisk } from '../riskPolicy.js';
+
+interface ExposureBody {
+  netContracts?: unknown;
+  egsiLevel?: unknown;
+}
+
+interface ValidatedExposure {
+  netContracts: number;
+  egsiLevel: number;
+}
+
+/** Validates the caller-supplied position/level inputs shared by
+ * /assess and /evaluate. Exported for direct unit testing. */
+export function validateExposureBody(body: ExposureBody): ValidatedExposure | string {
+  if (typeof body.netContracts !== 'number' || !Number.isFinite(body.netContracts)) {
+    return 'netContracts must be a finite number (signed: positive = net long, negative = net short)';
+  }
+  if (!Number.isInteger(body.netContracts)) {
+    return 'netContracts must be a whole number of contracts';
+  }
+  if (typeof body.egsiLevel !== 'number' || !Number.isFinite(body.egsiLevel) || body.egsiLevel <= 0) {
+    return 'egsiLevel must be a positive number';
+  }
+  return { netContracts: body.netContracts, egsiLevel: body.egsiLevel };
+}
 
 export function registerHedgeRoutes(app: FastifyInstance, deps: GatewayDeps): void {
   app.post('/api/v1/hedge/sync-signal', async () => {
@@ -26,4 +73,162 @@ export function registerHedgeRoutes(app: FastifyInstance, deps: GatewayDeps): vo
     });
     return { signal, egsi };
   });
+
+  // §10 step 1, on its own — a read-only "would this warrant a hedge?"
+  // check with no on-chain side effects, so a UI can poll it freely.
+  app.post<{ Body: ExposureBody }>('/api/v1/hedge/assess', async (request, reply) => {
+    const validated = validateExposureBody(request.body ?? {});
+    if (typeof validated === 'string') {
+      return reply.status(400).send({ error: validated });
+    }
+
+    const market = await deps.chainAdapter.getMarketState();
+    const exposure = assessExposure(
+      {
+        netContracts: validated.netContracts,
+        contractMultiplier: market.contractMultiplier,
+        egsiLevel: validated.egsiLevel,
+      },
+      deps.exposureConfig,
+    );
+
+    return { exposure };
+  });
+
+  // §10 steps 1-4: assess -> pull pricing -> RFQ -> best candidate ->
+  // hard risk policy -> approve/reject. Stops before execution.
+  app.post<{ Body: ExposureBody }>('/api/v1/hedge/evaluate', async (request, reply) => {
+    const validated = validateExposureBody(request.body ?? {});
+    if (typeof validated === 'string') {
+      return reply.status(400).send({ error: validated });
+    }
+
+    const market = await deps.chainAdapter.getMarketState();
+    const exposure = assessExposure(
+      {
+        netContracts: validated.netContracts,
+        contractMultiplier: market.contractMultiplier,
+        egsiLevel: validated.egsiLevel,
+      },
+      deps.exposureConfig,
+    );
+
+    if (!exposure.breached || !exposure.suggestedOptionType) {
+      return { exposure, hedged: false, reason: 'ETH-beta exposure is within threshold; no hedge warranted' };
+    }
+
+    // §8's MIN_MODEL_CONFIDENCE gates the AI-driven hedge path, so the
+    // forecast is needed before committing to an RFQ (which costs gas).
+    // A missing forecast fails closed: no confidence reading means the
+    // confidence floor cannot be shown to be satisfied.
+    const forecast = await deps.aiClient.getForecast();
+    if (!forecast) {
+      return reply.status(503).send({
+        exposure,
+        hedged: false,
+        error: 'no AI forecast available; cannot evaluate MIN_MODEL_CONFIDENCE, so no hedge may proceed',
+      });
+    }
+
+    // Check confidence BEFORE createHedgeRequest — a hedge that would be
+    // rejected on confidence anyway should not first spend real gas
+    // submitting an RFQ to Base mainnet. Only the confidence floor is
+    // checkable at this point: MAX_HEDGE_NOTIONAL caps the premium
+    // actually spent, which isn't known until a market maker quotes. See
+    // checkHedgeConfidence's doc comment.
+    const preCheck = checkHedgeConfidence(forecast.confidence, deps.riskPolicy);
+    if (!preCheck.accepted) {
+      return {
+        exposure,
+        forecast,
+        hedged: false,
+        approved: false,
+        reason: preCheck.reason,
+        note: 'rejected before any RFQ was submitted, so no gas was spent',
+      };
+    }
+
+    const signal = await deps.hedgeProvider.getVolSignal('ETH');
+    const hedgeRequest = await deps.hedgeProvider.requestHedgeQuote({
+      underlying: 'ETH',
+      optionType: exposure.suggestedOptionType,
+      // At-the-money: the strike closest to spot, rounded to a whole
+      // dollar. A more sophisticated hedge would pick a strike from the
+      // delta the exposure actually implies; ATM is the simple,
+      // defensible default for a first implementation.
+      strike: Math.round(signal.underlyingPrice),
+      expiry: signal.expiry,
+      numContracts: deps.exposureConfig.hedgeContracts,
+      direction: 'BUY',
+      offerDeadlineMinutes: deps.exposureConfig.offerDeadlineMinutes,
+    });
+
+    const candidate = await deps.hedgeProvider.getBestCandidate(hedgeRequest);
+    if (!candidate) {
+      return {
+        exposure,
+        forecast,
+        request: hedgeRequest,
+        hedged: false,
+        approved: false,
+        reason: 'no market maker offers received for this RFQ yet — poll /api/v1/hedge/candidate to re-check',
+      };
+    }
+
+    // Final check against the actual quoted price: the pre-check used
+    // the exposure's notional, but what would really be spent is the
+    // quoted premium, so MAX_HEDGE_NOTIONAL is re-applied to that.
+    const quotedNotional = candidate.pricePerContract * deps.exposureConfig.hedgeContracts;
+    const finalCheck = checkHedgeRisk(
+      { notional: quotedNotional, modelConfidence: forecast.confidence },
+      deps.riskPolicy,
+    );
+
+    return {
+      exposure,
+      forecast,
+      request: hedgeRequest,
+      candidate,
+      quotedNotional,
+      approved: finalCheck.accepted,
+      reason: finalCheck.accepted ? null : finalCheck.reason,
+      hedged: false,
+      note: 'evaluation only — this gateway never executes the trade. See this module header.',
+    };
+  });
+
+  // Re-poll an existing RFQ for offers, for the common case where
+  // /evaluate ran before any market maker had responded yet.
+  app.post<{ Body: { quotationId?: unknown; numContracts?: unknown; direction?: unknown } }>(
+    '/api/v1/hedge/candidate',
+    async (request, reply) => {
+      const { quotationId, numContracts, direction } = request.body ?? {};
+      if (typeof quotationId !== 'string' || !quotationId) {
+        return reply.status(400).send({ error: 'quotationId is required' });
+      }
+      if (typeof numContracts !== 'number' || numContracts <= 0) {
+        return reply.status(400).send({ error: 'numContracts must be a positive number' });
+      }
+      if (direction !== 'BUY' && direction !== 'SELL') {
+        return reply.status(400).send({ error: "direction must be 'BUY' or 'SELL'" });
+      }
+
+      // collectBestCandidate only reads quotationId/numContracts/direction
+      // off the request; the remaining fields are placeholders carried to
+      // satisfy the HedgeRequest shape.
+      const candidate = await deps.hedgeProvider.getBestCandidate({
+        quotationId,
+        underlying: 'ETH',
+        optionType: 'PUT',
+        strike: 0,
+        expiry: 0,
+        numContracts,
+        direction,
+        offerDeadlineUnixSeconds: 0,
+        transactionHash: '',
+      });
+
+      return { candidate };
+    },
+  );
 }
