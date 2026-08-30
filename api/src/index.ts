@@ -3,15 +3,24 @@
  * HttpAiClient into buildServer and starts listening. Run with:
  *
  *   cd api && npm run dev
- *
- * NOT exercised end-to-end from Claude's sandbox — no network egress to
- * Sui, Base, or a locally-running AI service there. See README.md.
  */
+import { loadEnvFile } from 'node:process';
 import { SuiChainAdapter } from '@gasx/sui-adapter';
 import { ThetanutsHedgeProvider } from '@gasx/thetanuts-adapter';
 import { HttpAiClient } from './aiClient.js';
 import { loadGatewayConfig } from './config.js';
 import { buildServer } from './server.js';
+
+// Load the gateway's own .env plus both chain adapters' .env files
+// (api/.env.example documents the split). Each is optional — config
+// defaults and the adapters' own validation still apply afterwards.
+for (const path of ['.env', '../blockchain/sui/.env', '../blockchain/thetanuts/.env']) {
+  try {
+    loadEnvFile(path);
+  } catch {
+    // No .env file at this path — variables may come from the shell.
+  }
+}
 
 const config = loadGatewayConfig();
 

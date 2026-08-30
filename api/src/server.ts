@@ -39,13 +39,18 @@ export function buildServer(deps: GatewayDeps): FastifyInstance {
 
   // AiServiceError (POST /cycle failed or was unreachable) maps to 502 —
   // this gateway's fault lies with an upstream dependency, not the
-  // caller's request. Everything else falls back to a generic 500
-  // rather than leaking internal error details to the caller; the real
-  // error is still logged server-side.
+  // caller's request. DevMarketUnavailableError (blockchain/sui's
+  // dev-market mode) maps to 503 with its message, because the caller
+  // needs to know *why* orders are unavailable. Everything else falls
+  // back to a generic 500 rather than leaking internal error details to
+  // the caller; the real error is still logged server-side.
   app.setErrorHandler((error, request, reply) => {
     request.log.error(error);
     if (error instanceof AiServiceError) {
       return reply.status(502).send({ error: error.message });
+    }
+    if (error instanceof Error && error.name === 'DevMarketUnavailableError') {
+      return reply.status(503).send({ error: error.message });
     }
     return reply.status(500).send({ error: 'internal error' });
   });
