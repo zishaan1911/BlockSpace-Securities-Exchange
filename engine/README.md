@@ -30,6 +30,17 @@ priority is `OrderBook`'s ordering plus `MatchingEngine`'s walk order, not
 an independent component — `QuoteEngine`, `InventoryTracker`,
 `PreTradeRisk`, `MarketDataPublisher`).
 
+## Cross-runtime parity with contracts/gasx (Move)
+
+There's no bridge that lets one test process call both Sui Move and this
+C++ code, so true integration testing across the two isn't possible.
+`tests/move_parity_tests.cpp` does the next best thing: it hard-codes the
+same numeric scenarios `contracts/gasx/tests/*.move` verifies on-chain —
+required margin, matching execution price, settlement PnL, and the
+capped-payout formula — with the exact same expected numbers, and checks
+this engine reproduces them. If a formula changes on one side without the
+other, this file is what catches the drift.
+
 ## Build & test
 
 ```bash
