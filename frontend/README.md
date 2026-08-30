@@ -5,6 +5,15 @@ API gateway over `/api/v1/...` — nothing here imports a Sui or Thetanuts
 SDK for data, because the gateway hides both. The single exception is
 signing, which by definition happens in the user's own wallet.
 
+## Status
+
+This is the merged frontend on `main` (brought in from `draft-frontend`,
+alongside the API gateway in `api/` and the Sui adapter in
+`blockchain/sui/`). Verified on the team's machine: `npm run typecheck`
+clean, `npm test` 17/17 passing, `npm run build` clean. It has not yet
+been run against a live gateway, and it has not been visually verified
+(see Honest gaps).
+
 ## Run
 
 The gateway must be running first (see `api/README.md`), along with the
@@ -26,6 +35,38 @@ GASX's own market lives (ARCHITECTURE.md §12).
 npm run typecheck
 npm test
 npm run build
+```
+
+## Stack
+
+- Vite + React 19 + TypeScript
+- `@mysten/dapp-kit-react` (the maintained successor to
+  `@mysten/dapp-kit`) with a `SuiGrpcClient`-based client per network
+- Vitest + jsdom for the unit tests (`tests/egsi.test.ts`)
+- npm as the package manager (`package-lock.json` committed)
+
+## Repository layout
+
+```text
+frontend/
+├── index.html
+├── package.json / tsconfig.json / tsconfig.typecheck.json / vite.config.ts
+├── src/
+│   ├── main.tsx               createDAppKit + DAppKitProvider wiring
+│   ├── App.tsx                the market screen: 15s poll of GET /api/v1/market
+│   ├── styles.css             instrument-panel theme (see Design)
+│   ├── lib/
+│   │   ├── api.ts             the only backend contact: GET /market, POST /orders/prepare,
+│   │   │                      /account/prepare-open, /hedge/assess, /hedge/evaluate
+│   │   └── egsi.ts            pure band/format math: stressBand, bandLabel, gaugeFraction
+│   └── components/
+│       ├── EgsiGauge.tsx      270° calibrated arc gauge with band marks
+│       ├── DriverBars.tsx     EGSI components sorted by contribution
+│       ├── Panels.tsx         ForecastPanel + MarketPanel
+│       ├── OrderTicket.tsx    order form; signs the gateway-prepared transaction
+│       └── HedgePanel.tsx     hedge reasoning: assess/evaluate with named risk limits
+└── tests/
+    └── egsi.test.ts           unit tests for lib/egsi.ts
 ```
 
 ## Design
@@ -85,14 +126,12 @@ an approval states plainly that nothing was traded.
 ## Honest gaps
 
 - **Not visually verified.** The layout, palette and gauge were built
-  and reviewed as code, and every module was confirmed to compile,
-  typecheck, build and serve without errors — but no browser screenshot
-  was ever taken, because Claude's sandbox could not download a headless
-  Chromium. Look at it before trusting the visual result.
-- **Never run against a live gateway.** All of the above was verified
-  against a local mock returning fixture data. The real end-to-end path
-  (gateway → Sui testnet → AI service → Thetanuts) has not been
-  exercised from this UI.
+  and reviewed as code, and the module typechecks, tests (17/17) and
+  builds cleanly — but nobody on the team has taken a screenshot yet.
+  Look at it in a browser before trusting the visual result.
+- **Never run against a live gateway.** All verification so far is
+  against unit-level tests. The real end-to-end path (gateway → Sui
+  testnet → AI service → Thetanuts) has not been exercised from this UI.
 - **No order book and no positions list.** Both need an indexer, which
   does not exist (`indexer/` is still an empty scaffold). This is why
   the hedge panel asks you to type your net position rather than reading
@@ -103,7 +142,7 @@ an approval states plainly that nothing was traded.
 - **One market, one screen.** There is only ever one market
   (ARCHITECTURE.md §12), so navigation between screens would be chrome
   around a single view.
-- **The margin account is entered by hand.** Opening one
+- **Margin accounts have no UI.** Opening one
   (`POST /api/v1/account/prepare-open`) is wired in the API client but
-  has no button yet; for now, create the account with the Sui CLI and
-  paste its object id.
+  has no button yet; the account id is expected to come from the Sui CLI
+  for now.
