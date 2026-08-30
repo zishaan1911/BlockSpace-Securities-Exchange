@@ -13,6 +13,9 @@ add_library(gasx_engine STATIC
   src/order_book.cpp
   src/matching_engine.cpp
   src/pre_trade_risk.cpp
+  src/inventory_tracker.cpp
+  src/pricing.cpp
+  src/market_data_publisher.cpp
 )
 target_include_directories(gasx_engine PUBLIC include)
 
@@ -37,6 +40,9 @@ if(GASX_ENGINE_BUILD_TESTS)
     tests/order_book_tests.cpp
     tests/matching_engine_tests.cpp
     tests/pre_trade_risk_tests.cpp
+    tests/inventory_tracker_tests.cpp
+    tests/pricing_tests.cpp
+    tests/market_data_publisher_tests.cpp
   )
   target_link_libraries(gasx_engine_tests PRIVATE gasx_engine GTest::gtest_main)
 

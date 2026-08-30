@@ -37,5 +37,35 @@ TEST(Risk, MatchesArchitectureNotionalExample) {
   EXPECT_EQ(notional(425, 5, 1), 2125);
 }
 
+TEST(Risk, LongPnlMatchesArchitectureExample) {
+  // buy 5 contracts at 425, final 500 -> P&L = (500-425)*1*5 = 375
+  const PnlResult result = compute_pnl(/*is_long=*/true, 425, 500, 5, 1);
+  EXPECT_EQ(result.magnitude, 375);
+  EXPECT_FALSE(result.is_negative);
+}
+
+TEST(Risk, LongPnlIsNegativeWhenPriceFalls) {
+  const PnlResult result = compute_pnl(true, 500, 425, 5, 1);
+  EXPECT_EQ(result.magnitude, 375);
+  EXPECT_TRUE(result.is_negative);
+}
+
+TEST(Risk, ShortPnlIsMirrorOfLong) {
+  const PnlResult long_result = compute_pnl(true, 425, 500, 5, 1);
+  const PnlResult short_result = compute_pnl(false, 425, 500, 5, 1);
+  EXPECT_EQ(long_result.magnitude, short_result.magnitude);
+  EXPECT_NE(long_result.is_negative, short_result.is_negative);
+}
+
+TEST(Risk, FlatPositionHasZeroPnl) {
+  const PnlResult result = compute_pnl(true, 300, 300, 10, 1);
+  EXPECT_EQ(result.magnitude, 0);
+  EXPECT_FALSE(result.is_negative);
+}
+
+TEST(Risk, ComputePnlRejectsZeroMultiplier) {
+  EXPECT_THROW(compute_pnl(true, 100, 200, 1, 0), std::invalid_argument);
+}
+
 } // namespace
 } // namespace gasx::risk

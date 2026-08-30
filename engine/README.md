@@ -15,10 +15,20 @@ simulation, and validating an order is worth submitting on-chain at all.
 | module | responsibility |
 |---|---|
 | `types` | shared value types — integer prices/quantities, no floating point |
-| `risk` | pure notional/margin math, mirrors `gasx::risk` in the Move package |
+| `risk` | pure notional/margin/PnL math, mirrors `gasx::risk` in the Move package |
 | `order_book` | price-time-priority book: bids/asks, cancel, fill |
 | `matching_engine` | deterministic matching against the book, executes at the resting price |
 | `pre_trade_risk` | order-size/position-limit/margin-sufficiency checks before an order is accepted |
+| `inventory_tracker` | net position + realized PnL from a fill stream, mirrors `gasx::position` |
+| `pricing` | `QuoteEngine` — model output -> fair_price/bid/ask/quote_size (§20.1 Pricing Runtime) |
+| `market_data_publisher` | in-process pub/sub for book and quote updates |
+
+This covers all seven components ARCHITECTURE.md §16.1 lists for the C++
+order engine (`OrderBook`, `MatchingEngine`, `PriceTimePriority` — folded
+into `MatchingEngine` rather than a separate class, since price-time
+priority is `OrderBook`'s ordering plus `MatchingEngine`'s walk order, not
+an independent component — `QuoteEngine`, `InventoryTracker`,
+`PreTradeRisk`, `MarketDataPublisher`).
 
 ## Build & test
 
@@ -52,3 +62,19 @@ elsewhere).
   net-position limits, and margin sufficiency. The fuller risk engine
   described in ARCHITECTURE.md §20.1 (circuit breakers, model-confidence
   limits, hedge ratio, concentration) is out of scope for this first slice.
+- **`QuoteEngine`'s spread model is intentionally simple** — it widens
+  with model volatility only. ARCHITECTURE.md §12 also lists liquidity,
+  order-book imbalance, inventory/risk, and hedge cost as quote inputs;
+  wiring `InventoryTracker`'s net position into `QuoteEngine` as a skew
+  term is a natural next step, not yet done.
+- **`InventoryTracker` supports position flips**, unlike the Move
+  contract's Phase 1 matching (which disallows a single fill flipping a
+  position through flat). Since this tracker is local bookkeeping, not
+  authoritative settlement state, there's no reason to impose that
+  restriction here — it realizes PnL on whatever portion of a fill closes
+  existing exposure, then opens a fresh basis on any remainder that flips
+  through to the other side.
+- **`MarketDataPublisher` is in-process only** — synchronous callbacks,
+  not a network transport. It's the hook point where a real one (the
+  WebSocket server in the TypeScript API gateway, ARCHITECTURE.md §22/§24)
+  plugs in later.
