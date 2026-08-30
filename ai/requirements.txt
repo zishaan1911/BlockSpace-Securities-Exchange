@@ -1,0 +1,28 @@
+# GASX AI service dependencies (setup.md: "Python 3.11+, FastAPI,
+# Pydantic, Pandas/Polars, NumPy, scikit-learn, LightGBM"). Install with
+# uv (per setup.md) or pip:
+#
+#   uv venv && uv pip install -r requirements.txt
+#   # or:
+#   python3 -m venv venv && venv/bin/pip install -r requirements.txt
+#
+# Versions pinned to what this module was built and tested against
+# (Python 3.12.3, in Claude's sandbox). Bump deliberately, not
+# incidentally — re-run the test suite after any bump.
+
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+pydantic>=2,<3
+pydantic-settings==2.15.0
+
+numpy==2.5.2
+pandas==3.0.5
+scikit-learn==1.9.0
+lightgbm==4.7.0
+
+web3==7.16.0
+pysui==1.4.1
+
+pytest==9.1.1
+httpx==0.28.1
+python-dotenv==1.2.3

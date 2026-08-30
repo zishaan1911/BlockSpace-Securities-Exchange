@@ -36,6 +36,12 @@ engine/build/
 contracts/**/build/
 .sui/
 
+# AI — trained model artifacts (regenerate with `python -m inference.train`;
+# see ai/README.md). Never commit a trained model as if it were reviewed,
+# versioned source.
+ai/models/*
+!ai/models/.gitkeep
+
 # OS / editor
 .DS_Store
 Thumbs.db
