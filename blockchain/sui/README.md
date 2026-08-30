@@ -16,9 +16,10 @@ leak past `client.ts`/`chainAdapter.ts`.
 | module | responsibility |
 |---|---|
 | `types` | GASX-facing types — `MarketState`, `OracleState`, `PreparedTransaction`, the `ChainAdapter` interface |
-| `config` | environment-driven config (RPC URL, package/market/oracle IDs, collateral coin type) |
+| `config` | environment-driven config (RPC URL, package/market/oracle IDs, collateral coin type, dev-market flag) |
 | `client` | real `SuiJsonRpcClient` factory (see "A note on the SDK" below) |
 | `marketState` | `parseMarketFields`/`parseOracleFields` (pure) + `fetchMarketState` (reads Market + OracleState) |
+| `devMarket` | `fetchDevMarketState` — the synthetic market served in dev-market mode |
 | `orderTx` | `prepareOpenAccount`/`prepareDeposit`/`preparePlaceOrder`/`prepareCancelOrder` — build and serialize, never sign |
 | `chainAdapter` | `SuiChainAdapter` — the concrete `ChainAdapter`, composing the above |
 
@@ -27,55 +28,65 @@ leak past `client.ts`/`chainAdapter.ts`.
 ```bash
 cd blockchain/sui
 npm install
-cp .env.example .env   # fill in package/market/oracle IDs — see contracts/gasx/README.md
+cp .env.example .env   # see "Dev-market mode" — empty IDs work out of the box
 npm run typecheck
-npm test
+npm test               # 14 tests: parsing fixtures + dev-market behavior
 ```
 
-## What's actually verified in Claude's sandbox vs. what needs
-## verification on your machine
+## Dev-market mode (default until deployed)
 
-Same split as `blockchain/thetanuts` and `ai/`, for the same reason: no
-network egress to Sui RPC from that sandbox.
+Until `contracts/gasx` is published on Sui, leave the four deployed-ID
+variables empty: the adapter then serves a **synthetic EGSI-1H market**
+(`devMarket.ts`) so the whole stack — AI service → API gateway →
+frontend — runs with zero deployment. The synthetic market mirrors the
+real on-chain terms (hourly expiry, multiplier 1, tick 1, unpaused,
+unsettled, oracle never published) and is flagged `devMode: true` so the
+frontend can label it honestly.
 
-- **Fully tested, real, in-sandbox**: `parseMarketFields`/
-  `parseOracleFields` (12 tests) against synthetic `MoveStruct`
-  fixtures shaped like a real `getObject` response — including Sui's
-  u64-as-decimal-string JSON-RPC convention, both wrapped (`{id: "0x.."}`)
-  and bare-string encodings of `ID`/address fields, and the
-  not-yet-settled vs. settled `settlementPrice` distinction. Also
-  typechecks (`tsc --noEmit`) and builds cleanly against the actually-
-  installed `@mysten/sui@2.27.1` package.
-- **NOT exercised against a live endpoint**: `fetchMarketState` and all
-  four `prepare*` functions, which call the real `SuiJsonRpcClient`
-  against Sui testnet/mainnet. Needs verification on your machine —
-  publish `contracts/gasx`, create a market + oracle, fill in `.env`,
-  and confirm a `prepareOpenAccount`/`preparePlaceOrder` response
-  actually deserializes and signs cleanly in a real wallet before
-  trusting this.
+In dev mode, `prepare*` **refuses** to build transactions
+(`DevMarketUnavailableError` — there is no on-chain market to sign for).
+The gateway maps that to a clear 503 message in the UI.
+
+- `GASX_SUI_DEV_MARKET=true` — force dev mode
+- `GASX_SUI_DEV_MARKET=false` — force real mode; missing IDs are a hard startup error
+- unset — auto: dev mode when any ID is missing
+
+## Going live (post-deployment)
+
+1. `sui client publish` in `contracts/gasx` → package ID.
+2. Create the market and oracle (`gasx::market::create_market` /
+   `gasx::oracle::create_oracle` — admin-gated via the `AdminCap` minted
+   on publish; callable with `sui client ptb`).
+3. Fill `GASX_SUI_PACKAGE_ID`, `GASX_SUI_MARKET_ID`, `GASX_SUI_ORACLE_ID`,
+   `GASX_SUI_COLLATERAL_COIN_TYPE` in `.env`, set
+   `GASX_SUI_DEV_MARKET=false`.
+4. Confirm a `prepareOpenAccount`/`preparePlaceOrder` response
+   deserializes and signs cleanly in a real wallet before trusting it.
+
+## Verification status
+
+- **Tested here**: `parseMarketFields`/`parseOracleFields` against
+  synthetic `MoveStruct` fixtures shaped like a real `getObject`
+  response (u64-as-decimal-string, wrapped/bare ID encodings, settled
+  vs. not), plus dev-market mode. Typecheck, tests (14) and build all
+  clean against the installed `@mysten/sui@2.27.1`.
+- **Not yet exercised against a live endpoint**: `fetchMarketState` and
+  the four `prepare*` functions against Sui testnet with a real
+  deployment — see "Going live" above.
 
 **A note on the SDK**: this targets `@mysten/sui@2.27.1`'s JSON-RPC
 client (`SuiJsonRpcClient`, from `@mysten/sui/jsonRpc`) — verified by
 introspecting the installed package's `.d.ts` directly. Every JSON-RPC
 export in that file carries an explicit `@deprecated` tag pointing at
 `SuiGrpcClient` (`@mysten/sui/grpc`) or `SuiGraphQLClient`
-(`@mysten/sui/graphql`) instead — none of which match what
-`sdk.mystenlabs.com`'s own published examples show as of this writing
-(they mostly still show the old `SuiClient`/`getFullnodeUrl` names,
-which don't exist in this installed version at all — the real class is
-`SuiJsonRpcClient`, the real URL helper is `getJsonRpcFullnodeUrl`).
-
-This adapter deliberately still uses the deprecated JSON-RPC path for
-v1: it's functionally complete (deprecated, not removed), far better
-documented than the newer gRPC-web path, and matches the testnet
-JSON-RPC endpoint `setup.md` already has you configure via the Sui CLI.
-Migrating to `SuiGrpcClient` is a reasonable follow-up once there's time
-to verify gRPC-web actually works cleanly from a Node.js server context
-(it's primarily documented for browser use) — not attempted here to
-keep this iteration's scope and risk bounded. If `@mysten/sui`'s pinned
-version has moved since this was written, re-verify against the
-installed `.d.ts` before trusting anything here — this exact SDK has
-already renamed its main client class and URL helper at least once.
+(`@mysten/sui/graphql`) instead. This adapter deliberately still uses
+the deprecated JSON-RPC path for v1: it's functionally complete
+(deprecated, not removed), far better documented than the newer
+gRPC-web path, and matches the testnet JSON-RPC endpoint `setup.md`
+already has you configure via the Sui CLI. Migrating to `SuiGrpcClient`
+is a reasonable follow-up; if `@mysten/sui`'s pinned version has moved
+since this was written, re-verify against the installed `.d.ts` before
+trusting anything here.
 
 ## Design notes
 
@@ -89,9 +100,7 @@ already renamed its main client class and URL helper at least once.
   client, the SDK can't resolve `tx.object(id)`'s current shared-object
   version or auto-select a gas coin, so the "transaction" it'd produce
   wouldn't actually be ready to sign. This was a real bug caught while
-  building this (the `client` parameter was threaded through but not
-  actually passed to `toJSON()` on the first pass) — worth remembering
-  if this file gets refactored.
+  building this — worth remembering if this file gets refactored.
 - **`fetchMarketState` cross-checks the market's on-chain `oracle_id`**
   against the configured `GASX_SUI_ORACLE_ID` and throws on mismatch,
   rather than silently trusting config — a stale `.env` pointing at the
