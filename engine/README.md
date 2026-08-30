@@ -63,10 +63,19 @@ elsewhere).
   described in ARCHITECTURE.md §20.1 (circuit breakers, model-confidence
   limits, hedge ratio, concentration) is out of scope for this first slice.
 - **`QuoteEngine`'s spread model is intentionally simple** — it widens
-  with model volatility only. ARCHITECTURE.md §12 also lists liquidity,
-  order-book imbalance, inventory/risk, and hedge cost as quote inputs;
-  wiring `InventoryTracker`'s net position into `QuoteEngine` as a skew
-  term is a natural next step, not yet done.
+  with model volatility, and its center shifts with inventory (see
+  below). ARCHITECTURE.md §12 also lists liquidity, order-book imbalance,
+  and hedge cost as quote inputs; those aren't wired in yet.
+- **Inventory skew**: `QuoteEngine::compute_quote` takes the market
+  maker's own net position (typically `InventoryTracker::net_position()`)
+  as a plain `Quantity` parameter, deliberately *not* a coupling to
+  `InventoryTracker`'s header — the caller samples inventory and passes
+  it in, keeping `pricing` and `portfolio` independently testable. A long
+  position skews both bid and ask down (less eager to buy more, more
+  attractive for others to buy from us); a short position skews both up.
+  Skewing shifts where the two-sided quote is centered — it never changes
+  `fair_price` (the model's unskewed view of fair value) or the spread
+  width (`ask - bid`).
 - **`InventoryTracker` supports position flips**, unlike the Move
   contract's Phase 1 matching (which disallows a single fill flipping a
   position through flat). Since this tracker is local bookkeeping, not

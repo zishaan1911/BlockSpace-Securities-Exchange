@@ -5,7 +5,7 @@
 
 namespace gasx {
 
-std::optional<Quote> QuoteEngine::compute_quote(const ModelQuoteInput& input) const {
+std::optional<Quote> QuoteEngine::compute_quote(const ModelQuoteInput& input, Quantity net_position) const {
   if (input.confidence < config_.min_confidence) {
     return std::nullopt;
   }
@@ -17,8 +17,15 @@ std::optional<Quote> QuoteEngine::compute_quote(const ModelQuoteInput& input) co
       static_cast<std::int64_t>(std::llround(input.volatility * config_.volatility_spread_multiplier));
   const Price half_spread = config_.base_half_spread + vol_component;
 
-  const Price bid = fair_price - half_spread;
-  const Price ask = fair_price + half_spread;
+  // Positive net_position (long) skews the center down: a lower bid
+  // (less eager to buy more) and a lower ask (more attractive for others
+  // to buy from us), both pulling inventory back toward flat. Negative
+  // net_position (short) does the opposite. fair_price itself stays the
+  // model's unskewed view of fair value.
+  const Price skew = net_position * config_.inventory_skew_per_unit;
+
+  const Price bid = fair_price - half_spread - skew;
+  const Price ask = fair_price + half_spread - skew;
 
   // Linearly interpolate size between min_quote_size (at min_confidence)
   // and max_quote_size (at confidence == 1.0).

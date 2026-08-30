@@ -43,6 +43,13 @@ struct PricingConfig {
   // Quote size at confidence == min_confidence; scales linearly with
   // confidence between the two.
   Quantity min_quote_size = 5;
+  // Ticks the quote *center* (bid and ask together) shifts per unit of
+  // net inventory position, in the direction that encourages trading
+  // back toward flat. 0 (the default) disables inventory skew entirely,
+  // matching the old unskewed behavior. Does not affect fair_price or
+  // the spread width (ask - bid) — only where the two-sided quote is
+  // centered.
+  Price inventory_skew_per_unit = 0;
 };
 
 struct Quote {
@@ -64,7 +71,21 @@ class QuoteEngine {
   // Returns std::nullopt if input.confidence < config.min_confidence —
   // i.e. the engine refuses to publish a two-sided quote it doesn't
   // trust, rather than quoting an arbitrarily wide/small one.
-  std::optional<Quote> compute_quote(const ModelQuoteInput& input) const;
+  //
+  // `net_position` is the market maker's own current signed inventory
+  // (positive = net long), typically InventoryTracker::net_position()
+  // for whatever book this engine is quoting into. Passed by value
+  // rather than coupling QuoteEngine to InventoryTracker directly, so
+  // this stays independently testable and the caller controls exactly
+  // when inventory is sampled. Defaults to 0 (flat / no skew) so
+  // existing call sites that don't track inventory are unaffected.
+  //
+  // A long position skews bid and ask both down (less eager to buy
+  // more, more attractive for others to buy from us, pulling inventory
+  // back toward flat); a short position skews both up. fair_price and
+  // the spread width (ask - bid) are unaffected by skew — only where
+  // the two-sided quote is centered moves.
+  std::optional<Quote> compute_quote(const ModelQuoteInput& input, Quantity net_position = 0) const;
 
  private:
   PricingConfig config_;
