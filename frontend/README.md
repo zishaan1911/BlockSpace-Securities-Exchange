@@ -128,10 +128,11 @@ an approval states plainly that nothing was traded.
 
 ## Honest gaps
 
-- **Not visually verified.** The layout, palette and gauge were built
-  and reviewed as code, and the module typechecks, tests (17/17) and
-  builds cleanly — but nobody on the team has taken a screenshot yet.
-  Look at it in a browser before trusting the visual result.
+- **Not visually verified by a human.** The layout, palette and gauge
+  were built and reviewed as code, and an automated headless-Chromium
+  check verifies the page loads with zero console/page errors and every
+  panel renders (including a hedge-assess round trip) — but no human
+  has eyeballed the screenshot yet. Do that before the demo.
 - **Order placement only works against a deployed market.** In
   dev-market mode the gateway returns a clear 503 ("contracts not
   deployed") which the ticket displays; signing a real order needs the
