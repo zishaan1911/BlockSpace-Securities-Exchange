@@ -37,6 +37,18 @@ That also happens to be exactly what the MUBA track demands: an AI agent that pl
 
 ---
 
+## The Whole Thing in Plain English
+
+**Problem.** ETH gas fees (transaction fee) are affected by many factors such as congestion etc. Predictable gas fees are a crucial need, at least for companies — they want to make sure the gas price is always lower than what they bet for.
+
+**Solution.** GASX, a platform that tracks EGSI and provides the option to trade futures on EGSI. If a user makes money from this EGSI, it could be used to compensate the recurring gas fees.
+
+**GASX workflow.** GASX is 450; the user bets it will be 570 after 1 hour since GASX's AI analysis suggested this, and places a 5-contract order. It is sent to the deployed Sui smart contract, and his USDC is locked (a position is created). The AI meanwhile keeps running on our own server (NOT inside the Sui blockchain) to calculate EGSI, publishes the latest EGSI onto Sui (oracle), and also stores it in PGSQL to be displayed at the frontend. After 1 hour, the contract settles and reads the final EGSI. If the user's bet was correct, he receives USDC per the contract; else he loses the USDC used to bet — because the USDC he lost goes to whoever took the opposite side of his bet: another user who bet the price will be lower, OR the exchange itself (GASX's own account) when no opposing user exists. This is the main workflow.
+
+**Hidden workflow: Thetanuts.** GASX is not fully decentralized because the final EGSI outcome is decided by our own oracle (our AI publishing the number onto Sui) — not because of Thetanuts. Thetanuts never decides any outcome; it is purely where GASX buys its insurance. The reason: for these futures to run (assuming a large user base), an equilibrium state may never be reached — everyone bets the same direction when gas spikes, so GASX's own account ends up on the losing side. Note that nobody can fail to pay, because USDC is locked on-chain upfront — the risk is not people not paying, it is GASX holding the losing side. Hence GASX hedges on ETH options on Thetanuts on Base mainnet to make sure it will not bear most of the loss, and can even profit over time.
+
+---
+
 ## Problem
 
 1. Gas congestion risk is hard to quantify — gas price alone is a poor measure of future blockspace demand.
