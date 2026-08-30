@@ -24,18 +24,38 @@ EGSI value on-chain (§6).
 
 ## Run
 
+Requires **Python 3.12+** (`requirements.txt` pins require it) and the
+system OpenMP runtime **`libgomp1`** (LightGBM needs it at import time —
+`setup.md` installs it).
+
 ```bash
 cd ai
-python3 -m venv venv && venv/bin/pip install -r requirements.txt
-cp .env.example .env   # fill in RPC URLs / oracle publisher key — see .env.example
-venv/bin/uvicorn main:app --reload
+uv venv venv --python 3.12               # or: python3.12 -m venv venv
+uv pip install --python venv/bin/python -r requirements.txt
+cp .env.example .env                     # defaults work: public Ethereum RPC; oracle publishing disabled
+venv/bin/uvicorn main:app --port 8000
 ```
+
+The service starts with no snapshot — `GET /egsi/current` returns 503
+until a cycle has run:
+
+```bash
+curl -X POST http://localhost:8000/cycle -H 'content-type: application/json' -d '{}'
+```
+
+(Optional `{"thetanuts_atm_iv": ..., "thetanuts_skew_25delta": ...}`
+body wires the Thetanuts vol signal into EGSI — the API gateway's
+`POST /api/v1/hedge/sync-signal` does this.)
+
+Oracle publishing (`POST /publish`) stays disabled (501) until
+`GASX_AI_SUI_PUBLISHER_PRIVATE_KEY`, `GASX_AI_SUI_PACKAGE_ID` and
+`GASX_AI_SUI_ORACLE_OBJECT_ID` are all set in `.env`.
 
 ## Test
 
 ```bash
 cd ai
-venv/bin/pytest
+venv/bin/pytest          # 86 tests; no network needed (ingestion is mocked)
 ```
 
 If pytest errors out importing an unrelated globally-registered plugin
@@ -51,32 +71,29 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 venv/bin/pytest
 
 `scripts/test-all.sh` already sets this for you.
 
-**What's actually verified in Claude's sandbox vs. what needs verification
-on your machine** — the same split this project already uses for Move
-contracts (see `GASX_PROJECT_HANDOFF.md` §1) applies here for the same
-reason: no network egress to any Ethereum or Sui RPC endpoint from that
-sandbox.
+**Verified status:**
 
-- **Fully tested, real, in-sandbox**: `features/egsi`, `features/history`,
+- **Tested here**: `features/egsi`, `features/history`,
   `inference/baseline`, `inference/forecaster` (including a full
   train -> save -> load -> predict round trip against synthetic data),
   `main`'s FastAPI routes (with ingestion mocked), and
   `ingestion/ethereum`'s parsing/shaping logic (with `web3.py` mocked).
-- **NOT exercised against a live endpoint** — needs verification on your
-  machine before you trust it:
-  - `ingestion/ethereum.EthereumIngestionClient` against a real Ethereum
-    RPC URL.
-  - `oracle/publisher.OraclePublisher` against Sui testnet, with a real
-    funded throwaway publisher key. This one is also worth extra
-    scrutiny for a different reason: it's built against `pysui` 1.4.x's
-    current async `PysuiConfiguration`/`client_factory` API, verified by
-    introspecting the actually-installed package rather than from
-    memory — `pysui` deprecated and then removed its older synchronous
-    `SuiConfig`/`SyncClient` classes (which a lot of tutorials and older
-    docs still show) around version 0.98. If the pinned `pysui` version
-    in `requirements.txt` has moved again by the time you read this,
-    re-verify `oracle/publisher.py`'s calls against it before trusting
-    them.
+  86 tests pass, type/imports clean.
+- **Live-verified on this machine**: a real `POST /cycle` against the
+  public Ethereum RPC produced a real EGSI snapshot (score + block
+  number + components) and the fallback forecast — so ingestion and the
+  fallback path work end-to-end without any keys.
+- **Not yet exercised**: `oracle/publisher.OraclePublisher` against Sui
+  testnet with a real funded throwaway publisher key (needs a deployed
+  package + OracleState). Also worth extra scrutiny when you get there:
+  it's built against `pysui` 1.4.x's current async
+  `PysuiConfiguration`/`client_factory` API, verified by introspecting
+  the actually-installed package rather than from memory — `pysui`
+  deprecated and then removed its older synchronous `SuiConfig`/`SyncClient`
+  classes (which a lot of tutorials and older docs still show) around
+  version 0.98. If the pinned `pysui` version in `requirements.txt` has
+  moved again by the time you read this, re-verify `oracle/publisher.py`'s
+  calls against it before trusting them.
 
 ## Design notes
 
@@ -89,10 +106,10 @@ sandbox.
   omitted, the blend renormalizes across the remaining six rather than
   treating "no signal" as "no stress." `main.py`'s `POST /cycle` accepts
   it via an optional `CycleRequest` body
-  (`thetanuts_atm_iv`/`thetanuts_skew_25delta`); there's no live
-  process wiring `blockchain/thetanuts`'s TypeScript output into this
-  endpoint automatically yet — that's the API gateway's job once Phase
-  2 exists (see `blockchain/thetanuts/README.md` for that adapter).
+  (`thetanuts_atm_iv`/`thetanuts_skew_25delta`); the live wiring is the
+  API gateway's `POST /api/v1/hedge/sync-signal`, which pulls the
+  Thetanuts vol signal and forwards it into `POST /cycle` (see
+  `api/README.md` and `blockchain/thetanuts/README.md`).
   `inference.forecaster.FEATURE_NAMES` includes `thetanuts_iv`/
   `thetanuts_skew` too (§4: "Thetanuts IV/skew signals"), defaulting to
   `0.0` via the same missing-feature handling every other feature uses.

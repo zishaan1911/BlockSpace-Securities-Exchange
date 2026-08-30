@@ -10,9 +10,12 @@ signing, which by definition happens in the user's own wallet.
 This is the merged frontend on `main` (brought in from `draft-frontend`,
 alongside the API gateway in `api/` and the Sui adapter in
 `blockchain/sui/`). Verified on the team's machine: `npm run typecheck`
-clean, `npm test` 17/17 passing, `npm run build` clean. It has not yet
-been run against a live gateway, and it has not been visually verified
-(see Honest gaps).
+clean, `npm test` 17/17 passing, `npm run build` clean.
+
+It has been exercised against the real local stack in dev-market mode
+(gateway serving the synthetic market + live EGSI from the AI service —
+see `api/README.md`), but not yet against a deployed Sui market, and it
+has not been visually verified in a browser (see Honest gaps).
 
 ## Run
 
@@ -129,9 +132,10 @@ an approval states plainly that nothing was traded.
   and reviewed as code, and the module typechecks, tests (17/17) and
   builds cleanly — but nobody on the team has taken a screenshot yet.
   Look at it in a browser before trusting the visual result.
-- **Never run against a live gateway.** All verification so far is
-  against unit-level tests. The real end-to-end path (gateway → Sui
-  testnet → AI service → Thetanuts) has not been exercised from this UI.
+- **Order placement only works against a deployed market.** In
+  dev-market mode the gateway returns a clear 503 ("contracts not
+  deployed") which the ticket displays; signing a real order needs the
+  Sui deployment described in `blockchain/sui/README.md`.
 - **No order book and no positions list.** Both need an indexer, which
   does not exist (`indexer/` is still an empty scaffold). This is why
   the hedge panel asks you to type your net position rather than reading

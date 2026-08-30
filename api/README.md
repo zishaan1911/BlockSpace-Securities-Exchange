@@ -63,37 +63,43 @@ Then:
 ```bash
 cd api
 npm install
-cp .env.example .env   # also fill in blockchain/sui/.env and blockchain/thetanuts/.env
+cp .env.example .env   # defaults are fine for local dev
 npm run typecheck
-npm test
-npm run dev             # or: npm run build && npm start
+npm test               # 72 tests, all against fakes — no network needed
+npm run dev            # or: npm run build && npm start
 ```
 
+On startup the gateway loads `api/.env`, `blockchain/sui/.env` and
+`blockchain/thetanuts/.env` into the process environment (each optional
+— see `src/index.ts`).
+
 The AI service (`ai/`) needs to be running separately for `/api/v1/market`
-and `/api/v1/hedge/sync-signal` to do anything useful — see `ai/README.md`.
+to carry live data — see `ai/README.md`.
 
-## What's actually verified in Claude's sandbox vs. what needs
-## verification on your machine
+**Dev-market mode (default until deployed).** With no Sui deployment
+(empty IDs in `blockchain/sui/.env`), the Sui adapter serves a synthetic
+EGSI-1H market (see `blockchain/sui/README.md`): `GET /api/v1/market`
+and `/api/v1/hedge/assess` work fully, while every `prepare*` endpoint
+returns **503 with an explanatory message** rather than failing
+obscurely. Once `contracts/gasx` is deployed and the IDs are filled in,
+the same gateway reads the real market and order preparation turns on.
 
-Same split as every other module in this repo, for the same reason: no
-network egress to Sui, Base, or a locally-running AI service from that
-sandbox.
+## Verified status
 
-- **Fully tested, real, in-sandbox**: `riskPolicy.ts`'s `checkOrderRisk`/
-  `checkHedgeRisk` (22 tests, pure functions) and every route (18 tests,
-  via Fastify's `.inject()` against hand-written fakes implementing
-  `ChainAdapter`/`HedgeProvider`/`AiClient` — covering success paths,
-  validation failures, risk-policy rejections, and both partial-failure
-  and total-failure behavior for the AI service and Thetanuts calls).
-  Typechecks and builds cleanly.
-- **NOT exercised end-to-end**: no test here ever talks to a real Sui
-  node, a real Thetanuts endpoint, or a real running AI service — that
-  needs all three actually up and reachable, which is exactly what
-  `blockchain/sui/README.md` and `blockchain/thetanuts/README.md` already
-  flag as unverified from their own adapters. Start the AI service
-  locally, fill in both adapters' `.env` files, and hit `GET /api/v1/market`
-  for real before trusting any of this beyond "the logic is right
-  against fakes."
+- **Tested here**: `riskPolicy.ts`'s `checkOrderRisk`/`checkHedgeRisk`
+  (pure functions) and every route via Fastify's `.inject()` against
+  hand-written fakes implementing `ChainAdapter`/`HedgeProvider`/`AiClient`
+  — success paths, validation failures, risk-policy rejections, and
+  partial/total AI-service and Thetanuts failures. 72 tests pass;
+  typechecks and builds cleanly.
+- **Live-verified on this machine**: with the AI service up and
+  dev-market mode on, `GET /api/v1/market` returns a combined state
+  (synthetic market + real EGSI + forecast) with a 200, and
+  `/api/v1/hedge/assess` returns real exposure math — so the gateway
+  wiring (env loading, adapters, AI client) runs end-to-end without any
+  keys. Still not exercised: real Sui reads/tx-prep (needs a
+  deployment) and the Thetanuts hedge routes (needs Base + optionally a
+  funded hedge wallet).
 
 ## What this gateway does NOT do (gaps worth knowing about)
 

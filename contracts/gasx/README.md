@@ -29,8 +29,41 @@ Requires the [Sui CLI](https://docs.sui.io/guides/developer/getting-started/sui-
 ```bash
 cd contracts/gasx
 sui move build
-sui move test
+sui move test      # 45 tests
 ```
+
+## Deploy (Sui testnet)
+
+Until deployed, the rest of the stack runs against a synthetic dev
+market (see `blockchain/sui/README.md`) — nothing here is required for
+local development.
+
+1. Fund a testnet address (the CLI faucet redirects to
+   https://faucet.sui.io) and publish:
+
+   ```bash
+   sui client switch --env testnet
+   sui client publish
+   ```
+
+   Note the package ID. Publishing mints `gasx::admin::AdminCap` to the
+   publisher address.
+2. Create the oracle and the market — both are admin-gated public
+   functions, callable via `sui client ptb` with the `AdminCap` object:
+
+   ```text
+   gasx::oracle::create_oracle(&AdminCap, initial_publisher, max_staleness_ms, max_price)
+   gasx::market::create_market(&AdminCap, underlying, expiry_ms, contract_multiplier,
+                               tick_size, margin_ratio_bps, oracle_id)
+   ```
+
+   (Alternatively, add a small helper module with `entry` wrappers.)
+3. Fill the resulting object IDs into `blockchain/sui/.env`
+   (`GASX_SUI_PACKAGE_ID` / `GASX_SUI_MARKET_ID` / `GASX_SUI_ORACLE_ID`
+   + `GASX_SUI_COLLATERAL_COIN_TYPE`) and set `GASX_SUI_DEV_MARKET=false`.
+4. The AI service can then publish EGSI updates to the oracle — give it
+   a funded publisher key matching `create_oracle`'s `initial_publisher`
+   (see `ai/.env.example`).
 
 ## Design notes
 
