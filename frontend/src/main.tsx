@@ -30,6 +30,11 @@ const dAppKit = createDAppKit({
   defaultNetwork: network,
   createClient: (net) =>
     new SuiGrpcClient({ network: net, baseUrl: `https://fullnode.${net}.sui.io:443` }),
+  // null disables the bundled Slush wallet entirely. Its initializer
+  // fetches https://api.slush.app/api/wallet/metadata at boot, which
+  // fails CORS from localhost and spams the console with errors for a
+  // wallet nobody in the demo uses.
+  slushWalletConfig: null,
 });
 
 createRoot(document.getElementById('root')!).render(
