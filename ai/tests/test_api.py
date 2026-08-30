@@ -15,6 +15,7 @@ def reset_state():
     main._history = main.EgsiHistory(max_len=main.settings.egsi_history_max_len)
     main._forecaster = main.Forecaster()
     main._latest_snapshot = None
+    main._latest_thetanuts_skew = None
     yield
 
 
@@ -100,6 +101,37 @@ def test_forecast_after_cycle_returns_fallback_when_no_model_loaded(client):
 def test_publish_returns_503_when_no_snapshot_yet(client):
     resp = client.post("/publish")
     assert resp.status_code == 503
+
+
+def test_cycle_accepts_optional_thetanuts_signal(client):
+    with patch("main.EthereumIngestionClient") as mock_cls:
+        mock_instance = MagicMock()
+        mock_instance.fetch_latest_metrics.return_value = make_metrics()
+        mock_cls.return_value = mock_instance
+        resp = client.post("/cycle", json={"thetanuts_atm_iv": 0.8, "thetanuts_skew_25delta": 0.05})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["components"]["thetanuts_iv"] is not None
+
+
+def test_cycle_without_thetanuts_signal_leaves_component_null(client):
+    resp = run_cycle_with_mocked_ingestion(client)
+    assert resp.json()["components"]["thetanuts_iv"] is None
+
+
+def test_forecast_reflects_thetanuts_skew_from_last_cycle(client):
+    with patch("main.EthereumIngestionClient") as mock_cls:
+        mock_instance = MagicMock()
+        mock_instance.fetch_latest_metrics.return_value = make_metrics()
+        mock_cls.return_value = mock_instance
+        client.post("/cycle", json={"thetanuts_atm_iv": 0.9, "thetanuts_skew_25delta": 0.12})
+
+    # Fallback forecaster ignores feature values, but the endpoint
+    # should still resolve without error with a Thetanuts signal present
+    # in state — this exercises the feature_dict construction path.
+    resp = client.get("/forecast")
+    assert resp.status_code == 200
 
 
 def test_publish_returns_501_when_not_configured(client):

@@ -82,10 +82,20 @@ sandbox.
 
 - **`features/egsi.compute_egsi` is a pure function** — no I/O, no
   global state, same inputs always produce the same output. v1 is a
-  hand-tuned weighted sum of six `[0, 1]` normalized components (§3);
-  Thetanuts ETH option implied volatility is a seventh, planned input
-  explicitly deferred to Phase 4 (GOALS.md's build order) and not
-  present here.
+  hand-tuned weighted sum of `[0, 1]` normalized components (§3): six
+  from Ethereum chain data, plus a seventh, Thetanuts ETH implied
+  volatility, wired in per GOALS.md's Phase 4. The seventh is optional
+  (`compute_egsi`'s `thetanuts_iv` parameter defaults to `None`) — when
+  omitted, the blend renormalizes across the remaining six rather than
+  treating "no signal" as "no stress." `main.py`'s `POST /cycle` accepts
+  it via an optional `CycleRequest` body
+  (`thetanuts_atm_iv`/`thetanuts_skew_25delta`); there's no live
+  process wiring `blockchain/thetanuts`'s TypeScript output into this
+  endpoint automatically yet — that's the API gateway's job once Phase
+  2 exists (see `blockchain/thetanuts/README.md` for that adapter).
+  `inference.forecaster.FEATURE_NAMES` includes `thetanuts_iv`/
+  `thetanuts_skew` too (§4: "Thetanuts IV/skew signals"), defaulting to
+  `0.0` via the same missing-feature handling every other feature uses.
 - **Normalization reference points
   (`features/egsi.EgsiNormalizationConfig`) are rough, undocumented-as-
   calibrated defaults**, not fit against real historical data — there

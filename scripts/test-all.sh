@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # Runs the full test suite for every stack that currently has one:
-#   - contracts/gasx     (Sui Move)
-#   - engine              (C++)
-#   - ai                  (Python)
+#   - contracts/gasx         (Sui Move)
+#   - engine                  (C++)
+#   - ai                      (Python)
+#   - blockchain/thetanuts    (TypeScript)
 #
 # Usage: ./scripts/test-all.sh
-# Requires: sui CLI on PATH, cmake + a C++17 compiler, and either an
-# ai/venv (see ai/README.md) or pytest importable via `python3 -m pytest`.
+# Requires: sui CLI on PATH, cmake + a C++17 compiler, either an
+# ai/venv (see ai/README.md) or pytest importable via `python3 -m
+# pytest`, and Node.js >= 18 + npm for blockchain/thetanuts.
 
 set -uo pipefail
 
@@ -69,6 +71,27 @@ if [ -n "$PYTEST" ]; then
 else
   echo "!! pytest not found (no ai/venv, and no system pytest) — skipping AI tests"
   echo "   (see ai/README.md for setup instructions)"
+  FAILED=1
+fi
+
+echo
+echo "==> blockchain/thetanuts (TypeScript)"
+if command -v npm >/dev/null 2>&1; then
+  if [ ! -d "$REPO_ROOT/blockchain/thetanuts/node_modules" ]; then
+    echo "-- node_modules missing, running npm install first"
+    (cd "$REPO_ROOT/blockchain/thetanuts" && npm install)
+  fi
+  (cd "$REPO_ROOT/blockchain/thetanuts" && npm run typecheck && npm test)
+  THETANUTS_STATUS=$?
+  if [ "$THETANUTS_STATUS" -ne 0 ]; then
+    echo "!! Thetanuts adapter tests FAILED"
+    FAILED=1
+  else
+    echo "-- Thetanuts adapter tests passed"
+  fi
+else
+  echo "!! npm not found on PATH — skipping Thetanuts adapter tests"
+  echo "   (see blockchain/thetanuts/README.md for setup instructions)"
   FAILED=1
 fi
 

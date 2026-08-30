@@ -18,7 +18,7 @@ from features.egsi import EgsiNormalizationConfig, EgsiWeights, compute_egsi
 from features.history import EgsiHistory
 from inference.forecaster import Forecaster
 from ingestion.ethereum import EthereumIngestionClient
-from schemas import EgsiSnapshot, ForecastOutput
+from schemas import CycleRequest, EgsiSnapshot, ForecastOutput
 
 app = FastAPI(title="GASX AI Service", version="0.1.0")
 
@@ -29,6 +29,10 @@ app = FastAPI(title="GASX AI Service", version="0.1.0")
 _history = EgsiHistory(max_len=settings.egsi_history_max_len)
 _forecaster = Forecaster()  # no trained model loaded yet — see inference/train.py; serves the fallback forecast until one is
 _latest_snapshot: EgsiSnapshot | None = None
+# Thetanuts skew isn't part of EGSI's own formula (ARCHITECTURE.md §3
+# only lists IV), but it is a forecast feature (§4) — tracked separately
+# since EgsiSnapshot/EgsiComponents has no slot for it.
+_latest_thetanuts_skew: float | None = None
 
 
 def _ingestion_client() -> EthereumIngestionClient:
@@ -64,20 +68,28 @@ def get_forecast() -> ForecastOutput:
         "utilization": components.utilization if components else 0.0,
         "mempool_pressure": components.mempool_pressure if components else 0.0,
         "gas_volatility": components.gas_volatility if components else 0.0,
+        "thetanuts_iv": (components.thetanuts_iv if components and components.thetanuts_iv is not None else 0.0),
+        "thetanuts_skew": _latest_thetanuts_skew if _latest_thetanuts_skew is not None else 0.0,
     }
     return _forecaster.predict(feature_dict)
 
 
 @app.post("/cycle", response_model=EgsiSnapshot)
-def run_cycle() -> EgsiSnapshot:
+def run_cycle(thetanuts: CycleRequest | None = None) -> EgsiSnapshot:
     """One ingest -> compute EGSI -> update history cycle. Does NOT
     publish to Sui — that's a separate, explicit step (POST /publish),
     since an on-chain write with real (testnet-or-real) gas cost should
-    never happen as a side effect of a read/compute loop."""
-    global _latest_snapshot
+    never happen as a side effect of a read/compute loop.
+
+    `thetanuts` is optional (ARCHITECTURE.md §3, §4) — see CycleRequest's
+    docstring in schemas.py for why there's no automatic live wiring to
+    blockchain/thetanuts yet."""
+    global _latest_snapshot, _latest_thetanuts_skew
     client = _ingestion_client()
     metrics = client.fetch_latest_metrics()
-    snapshot = compute_egsi(metrics, EgsiWeights(), EgsiNormalizationConfig())
+    thetanuts_iv = thetanuts.thetanuts_atm_iv if thetanuts else None
+    _latest_thetanuts_skew = thetanuts.thetanuts_skew_25delta if thetanuts else None
+    snapshot = compute_egsi(metrics, EgsiWeights(), EgsiNormalizationConfig(), thetanuts_iv=thetanuts_iv)
     _history.push(snapshot.score)
     _latest_snapshot = snapshot
     return snapshot

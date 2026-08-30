@@ -53,6 +53,8 @@ def _synthetic_history(n: int = 400, seed: int = 0) -> pd.DataFrame:
             "utilization": np.zeros(n),
             "mempool_pressure": np.zeros(n),
             "gas_volatility": np.zeros(n),
+            "thetanuts_iv": np.zeros(n),
+            "thetanuts_skew": np.zeros(n),
         }
     )
     df["target"] = df["ema"]

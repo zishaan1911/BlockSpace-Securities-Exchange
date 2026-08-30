@@ -1,17 +1,23 @@
 """EGSI — Ethereum Gas Stress Index (ARCHITECTURE.md §3).
 
-v1 is a hand-tuned weighted sum of six normalized [0, 1] component
-scores, blended and scaled to an integer 0-1000 index. Thetanuts ETH
-option implied volatility is a seventh planned input (ARCHITECTURE.md
-§3) — explicitly "wired in during Phase 4" per GOALS.md's build order,
-so it is deliberately absent here.
+v1 is a hand-tuned weighted sum of normalized [0, 1] component scores,
+blended and scaled to an integer 0-1000 index. Six components come from
+Ethereum chain data alone; a seventh, Thetanuts ETH option implied
+volatility, is wired in here per GOALS.md's Phase 4 — it's optional
+(compute_egsi's thetanuts_iv parameter defaults to None), since it
+depends on blockchain/thetanuts's adapter actually being reachable
+(itself only wired to a live Thetanuts endpoint on your machine, not in
+Claude's sandbox — see blockchain/thetanuts/README.md). Omitting it
+renormalizes the blend across the remaining six, rather than treating
+"no signal" as "no stress."
 
 Every normalization below is a documented heuristic appropriate for a
 hackathon v1, not a calibrated model — the AI forecast layer
 (inference/) is what's expected to actually predict EGSI moves; this
-module's only job is turning one block's raw chain data into that
-block's score. compute_egsi() is a pure function: same inputs always
-produce the same output, no I/O, no floating global state.
+module's only job is turning one block's raw chain data (plus, when
+available, one live Thetanuts vol signal) into that block's score.
+compute_egsi() is a pure function: same inputs always produce the same
+output, no I/O, no floating global state.
 """
 from __future__ import annotations
 
@@ -28,9 +34,11 @@ def _clamp01(x: float) -> float:
 @dataclass(frozen=True)
 class EgsiWeights:
     """Relative weights for each component. Do not need to sum to 1 —
-    compute_egsi() normalizes by their sum, so a caller tuning one
-    weight doesn't have to rebalance the rest by hand. All-zero weights
-    raise ValueError (there'd be no signal left to blend)."""
+    compute_egsi() normalizes by whichever weights actually contributed
+    (thetanuts_iv is excluded from that normalization when the caller
+    doesn't supply a live IV value), so tuning one weight doesn't
+    require rebalancing the rest by hand. All-zero *contributing*
+    weights raise ValueError (there'd be no signal left to blend)."""
 
     base_fee: float = 0.25
     utilization: float = 0.15
@@ -38,8 +46,14 @@ class EgsiWeights:
     fee_momentum: float = 0.15
     gas_volatility: float = 0.15
     dex_activity: float = 0.15
+    thetanuts_iv: float = 0.15
 
     def total(self) -> float:
+        """Nominal sum of all seven weights, including thetanuts_iv —
+        informational only. compute_egsi() computes its own
+        normalization total from whichever components actually have a
+        value for a given call, which excludes thetanuts_iv's weight
+        whenever no live IV was supplied."""
         return (
             self.base_fee
             + self.utilization
@@ -47,6 +61,7 @@ class EgsiWeights:
             + self.fee_momentum
             + self.gas_volatility
             + self.dex_activity
+            + self.thetanuts_iv
         )
 
 
@@ -79,6 +94,13 @@ class EgsiNormalizationConfig:
     # DEX activity: dex_tx_count / block_tx_count, normalized against this
     # ceiling fraction.
     dex_activity_ceiling_fraction: float = 0.5
+
+    # Thetanuts ETH option implied volatility: annualized decimal (0.65 =
+    # 65%), 0 at/below floor, 1.0 at/above ceiling. Rough ETH-options
+    # ballpark, not calibrated against real Thetanuts history — tune
+    # once blockchain/thetanuts has accumulated some.
+    thetanuts_iv_floor: float = 0.3
+    thetanuts_iv_ceiling: float = 1.5
 
 
 def _normalize_base_fee(base_fee_wei: int, config: EgsiNormalizationConfig) -> float:
@@ -135,20 +157,34 @@ def _normalize_dex_activity(dex_tx_count: int, block_tx_count: int, config: Egsi
     return _clamp01(fraction / config.dex_activity_ceiling_fraction)
 
 
+def _normalize_thetanuts_iv(thetanuts_iv: float, config: EgsiNormalizationConfig) -> float:
+    """Thetanuts ETH ATM implied volatility (annualized decimal) —
+    distinguishes "gas is rising because Ethereum is busy" from "gas is
+    rising inside a broad crypto volatility shock" (ARCHITECTURE.md §3).
+    """
+    span = config.thetanuts_iv_ceiling - config.thetanuts_iv_floor
+    if span <= 0:
+        raise ValueError("thetanuts_iv_ceiling must exceed thetanuts_iv_floor")
+    return _clamp01((thetanuts_iv - config.thetanuts_iv_floor) / span)
+
+
 def compute_egsi(
     metrics: RawEthereumMetrics,
     weights: EgsiWeights | None = None,
     config: EgsiNormalizationConfig | None = None,
+    thetanuts_iv: float | None = None,
 ) -> EgsiSnapshot:
-    """Turns one block's raw metrics into an EgsiSnapshot: six [0, 1]
-    component scores plus their weighted blend, scaled to an integer
-    0-1000 index and rounded to the nearest whole point."""
+    """Turns one block's raw metrics — plus, when available, a live
+    Thetanuts ETH implied-volatility reading (blockchain/thetanuts's
+    VolSignal.atmIv) — into an EgsiSnapshot: component scores plus their
+    weighted blend, scaled to an integer 0-1000 index and rounded to the
+    nearest whole point. thetanuts_iv is optional: pass None (the
+    default) when no live signal is available for this cycle, and the
+    blend renormalizes across the remaining six components rather than
+    treating a missing signal as "no stress."
+    """
     weights = weights or EgsiWeights()
     config = config or EgsiNormalizationConfig()
-
-    total_weight = weights.total()
-    if total_weight <= 0:
-        raise ValueError("EgsiWeights must sum to a positive total")
 
     components = EgsiComponents(
         base_fee=_normalize_base_fee(metrics.base_fee_wei, config),
@@ -157,16 +193,24 @@ def compute_egsi(
         fee_momentum=_normalize_fee_momentum(metrics.base_fee_history_wei, config),
         gas_volatility=_normalize_gas_volatility(metrics.base_fee_history_wei, config),
         dex_activity=_normalize_dex_activity(metrics.dex_tx_count, metrics.block_tx_count, config),
+        thetanuts_iv=(_normalize_thetanuts_iv(thetanuts_iv, config) if thetanuts_iv is not None else None),
     )
 
-    weighted = (
-        components.base_fee * weights.base_fee
-        + components.utilization * weights.utilization
-        + components.mempool_pressure * weights.mempool_pressure
-        + components.fee_momentum * weights.fee_momentum
-        + components.gas_volatility * weights.gas_volatility
-        + components.dex_activity * weights.dex_activity
-    ) / total_weight
+    weighted_pairs = [
+        (components.base_fee, weights.base_fee),
+        (components.utilization, weights.utilization),
+        (components.mempool_pressure, weights.mempool_pressure),
+        (components.fee_momentum, weights.fee_momentum),
+        (components.gas_volatility, weights.gas_volatility),
+        (components.dex_activity, weights.dex_activity),
+    ]
+    if components.thetanuts_iv is not None:
+        weighted_pairs.append((components.thetanuts_iv, weights.thetanuts_iv))
+
+    total_weight = sum(weight for _, weight in weighted_pairs)
+    if total_weight <= 0:
+        raise ValueError("EgsiWeights must sum to a positive total across the contributing components")
+    weighted = sum(value * weight for value, weight in weighted_pairs) / total_weight
 
     score = round(_clamp01(weighted) * 1000)
 

@@ -41,6 +41,12 @@ class EgsiComponents(BaseModel):
     fee_momentum: float
     gas_volatility: float
     dex_activity: float
+    # None when no live Thetanuts ETH IV signal was supplied to
+    # compute_egsi() for this snapshot — distinct from 0.0, which would
+    # mean "IV was supplied and read as minimal stress." Wired in Phase 4
+    # (GOALS.md); the seventh input ARCHITECTURE.md §3 describes.
+    thetanuts_iv: float | None = None
+    dex_activity: float
 
 
 class EgsiSnapshot(BaseModel):
@@ -62,3 +68,20 @@ class ForecastOutput(BaseModel):
     confidence: float = Field(..., ge=0.0, le=1.0)
     p_tail_500: float = Field(..., ge=0.0, le=1.0)
     model_version: str
+
+
+class CycleRequest(BaseModel):
+    """Optional live Thetanuts ETH vol signal for one /cycle call
+    (ARCHITECTURE.md §3's EGSI input, §4's forecast IV/skew feature;
+    blockchain/thetanuts's VolSignal — see that module's README for how
+    atmIv/skew25Delta are computed). Omit either or both fields when no
+    live signal is available for this cycle; EGSI and the forecaster
+    both handle a missing Thetanuts signal explicitly (renormalizing/
+    defaulting) rather than assuming calm. There's no live process
+    wiring blockchain/thetanuts's TypeScript output into this endpoint
+    yet — that's the API gateway's job once Phase 2 exists; until then,
+    a caller supplies these fields manually or via a small bridging
+    script."""
+
+    thetanuts_atm_iv: float | None = None
+    thetanuts_skew_25delta: float | None = None

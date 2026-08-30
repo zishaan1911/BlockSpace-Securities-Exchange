@@ -108,6 +108,8 @@ def test_components_are_individually_clamped_to_0_1():
         make_metrics(base_fee_wei=1_000_000_000_000, pending_tx_count=10_000_000)  # absurdly high
     )
     for value in snapshot.components.model_dump().values():
+        if value is None:  # thetanuts_iv, when no live signal was supplied
+            continue
         assert 0.0 <= value <= 1.0
 
 
@@ -151,3 +153,60 @@ def test_custom_normalization_config_is_respected():
     # check indirectly via a different base fee.
     assert 0.0 <= default_snapshot.components.base_fee <= 1.0
     assert 0.0 <= tight_snapshot.components.base_fee <= 1.0
+
+
+def test_thetanuts_iv_omitted_by_default_leaves_component_none():
+    snapshot = compute_egsi(make_metrics())
+    assert snapshot.components.thetanuts_iv is None
+
+
+def test_thetanuts_iv_supplied_populates_the_component():
+    snapshot = compute_egsi(make_metrics(), thetanuts_iv=0.9)
+    assert snapshot.components.thetanuts_iv is not None
+    assert 0.0 <= snapshot.components.thetanuts_iv <= 1.0
+
+
+def test_higher_thetanuts_iv_increases_score_all_else_equal():
+    metrics = make_metrics(base_fee_wei=10_000_000_000, gas_used=1_000_000, pending_tx_count=0)
+    calm = compute_egsi(metrics, thetanuts_iv=0.3)  # at the floor
+    stressed = compute_egsi(metrics, thetanuts_iv=1.5)  # at the ceiling
+    assert stressed.score > calm.score
+
+
+def test_thetanuts_iv_absent_vs_present_can_move_the_score():
+    # A high live IV reading should pull the blended score up relative
+    # to having no signal at all for an otherwise-calm block, since the
+    # blend without it excludes thetanuts_iv's weight entirely rather
+    # than treating the missing signal as calm.
+    metrics = make_metrics(base_fee_wei=10_000_000_000, gas_used=1_000_000, pending_tx_count=0)
+    without_signal = compute_egsi(metrics)
+    with_high_iv = compute_egsi(metrics, thetanuts_iv=1.5)
+    assert with_high_iv.score > without_signal.score
+
+
+def test_thetanuts_iv_component_is_clamped_to_0_1():
+    snapshot = compute_egsi(make_metrics(), thetanuts_iv=50.0)  # absurdly high
+    assert snapshot.components.thetanuts_iv == 1.0
+
+    snapshot_low = compute_egsi(make_metrics(), thetanuts_iv=-10.0)  # absurdly low
+    assert snapshot_low.components.thetanuts_iv == 0.0
+
+
+def test_custom_thetanuts_iv_normalization_config_is_respected():
+    tight_config = EgsiNormalizationConfig(thetanuts_iv_floor=0.6, thetanuts_iv_ceiling=0.8)
+    snapshot = compute_egsi(make_metrics(), config=tight_config, thetanuts_iv=0.7)
+    assert snapshot.components.thetanuts_iv == pytest.approx(0.5)
+
+
+def test_thetanuts_iv_ceiling_not_exceeding_floor_raises():
+    bad_config = EgsiNormalizationConfig(thetanuts_iv_floor=1.0, thetanuts_iv_ceiling=0.5)
+    with pytest.raises(ValueError):
+        compute_egsi(make_metrics(), config=bad_config, thetanuts_iv=0.7)
+
+
+def test_thetanuts_iv_weight_of_zero_excludes_it_even_when_supplied():
+    weights = EgsiWeights(thetanuts_iv=0.0)
+    metrics = make_metrics(base_fee_wei=10_000_000_000, gas_used=1_000_000, pending_tx_count=0)
+    with_zero_weight = compute_egsi(metrics, weights=weights, thetanuts_iv=1.5)
+    without_signal = compute_egsi(metrics, weights=weights)
+    assert with_zero_weight.score == without_signal.score

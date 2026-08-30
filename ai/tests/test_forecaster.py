@@ -169,6 +169,8 @@ def _synthetic_dataset(n: int = 400, seed: int = 42):
             "utilization": np.zeros(n),
             "mempool_pressure": np.zeros(n),
             "gas_volatility": np.zeros(n),
+            "thetanuts_iv": np.zeros(n),
+            "thetanuts_skew": np.zeros(n),
         }
     )
     target = ema  # trivially learnable: target equals the 'ema' feature

@@ -45,6 +45,14 @@ FEATURE_NAMES = [
     "utilization",
     "mempool_pressure",
     "gas_volatility",
+    # Wired in Phase 4 (GOALS.md) — ARCHITECTURE.md §4: "Thetanuts IV/
+    # skew signals" as forecast features, on top of the EGSI-history
+    # features above. Both default to 0.0 via predict()'s .get(name, 0.0)
+    # when no live Thetanuts signal was available for a given cycle (see
+    # main.py's CycleRequest/run_cycle) — same graceful-degradation
+    # convention as every other feature here.
+    "thetanuts_iv",
+    "thetanuts_skew",
 ]
 
 # Used only if no trained model is loaded, or inference raises — keeps

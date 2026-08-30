@@ -1,0 +1,25 @@
+{
+  "name": "@gasx/thetanuts-adapter",
+  "version": "0.1.0",
+  "private": true,
+  "description": "GASX's Thetanuts adapter (ARCHITECTURE.md \u00a77): market data/IV/skew for the AI service, and the RFQ hedge workflow. One HedgeProvider-style interface so Thetanuts SDK types never leak into the rest of GASX.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@thetanuts-finance/thetanuts-client": "^0.3.0",
+    "ethers": "^6.17.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
