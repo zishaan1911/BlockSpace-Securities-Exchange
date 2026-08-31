@@ -20,6 +20,7 @@ keeps the demo alive if the model fails").
 """
 from __future__ import annotations
 
+import json
 import math
 from dataclasses import dataclass
 
@@ -141,6 +142,43 @@ class Forecaster:
             )
         except Exception:
             return FALLBACK_FORECAST
+
+
+def load_trained_model(models_dir) -> TrainedModel | None:
+    """Loads a model saved by inference/train.py, or None if there isn't
+    one to load.
+
+    Honours the baseline gate: a model whose metadata records
+    beats_baseline=false is deliberately NOT loaded, because
+    ARCHITECTURE.md §4 says to ship the baseline in that case. Returning
+    None there means the service keeps serving its honest fallback
+    rather than a model already known to be worse than predicting no
+    change.
+    """
+    from pathlib import Path
+
+    directory = Path(models_dir)
+    metadata_path = directory / "metadata.json"
+    paths = {name: directory / f"egsi_{name}.txt" for name in ("median", "low", "high")}
+    if not metadata_path.exists() or not all(p.exists() for p in paths.values()):
+        return None
+
+    try:
+        metadata = json.loads(metadata_path.read_text())
+        if not metadata.get("beats_baseline", False):
+            return None
+        if metadata.get("feature_names") != FEATURE_NAMES:
+            # Feature set changed since training; the saved model expects
+            # a different input shape and would silently produce garbage.
+            return None
+        return TrainedModel(
+            median=lgb.Booster(model_file=str(paths["median"])),
+            low=lgb.Booster(model_file=str(paths["low"])),
+            high=lgb.Booster(model_file=str(paths["high"])),
+            beats_baseline=True,
+        )
+    except Exception:
+        return None
 
 
 def train(

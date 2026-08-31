@@ -88,3 +88,65 @@ def test_scores_property_reflects_push_order():
 def test_max_len_below_one_raises():
     with pytest.raises(ValueError):
         EgsiHistory(max_len=0)
+
+
+# ---------------------------------------------------------------------------
+# Feature building for training.
+#
+# These matter because train and serve must derive features identically.
+# _build_features replays history through the same EgsiHistory the live
+# service uses, precisely so the two cannot drift apart.
+# ---------------------------------------------------------------------------
+
+
+def test_build_features_produces_exactly_the_forecaster_feature_set():
+    import pandas as pd
+    from inference.forecaster import FEATURE_NAMES
+    from inference.train import _build_features
+
+    raw = pd.DataFrame({
+        "score": list(range(100, 200)),
+        "base_fee": [0.1] * 100,
+        "utilization": [0.5] * 100,
+        "mempool_pressure": [0.3] * 100,
+        "gas_volatility": [0.2] * 100,
+    })
+    built = _build_features(raw, horizon=5)
+    assert list(built.columns) == FEATURE_NAMES + ["target"]
+
+
+def test_build_features_target_is_the_score_horizon_rows_ahead():
+    import pandas as pd
+    from inference.train import _build_features
+
+    raw = pd.DataFrame({
+        "score": [100, 200, 300, 400, 500],
+        "base_fee": [0.1] * 5, "utilization": [0.5] * 5,
+        "mempool_pressure": [0.3] * 5, "gas_volatility": [0.2] * 5,
+    })
+    built = _build_features(raw, horizon=2)
+    # Row 0's target is row 2's score; the last 2 rows are dropped since
+    # their future has not happened yet.
+    assert built["target"].tolist() == [300.0, 400.0, 500.0]
+    assert len(built) == 3
+
+
+def test_build_features_defaults_absent_thetanuts_signal_to_zero():
+    import pandas as pd
+    from inference.train import _build_features
+
+    raw = pd.DataFrame({
+        "score": list(range(50)), "base_fee": [0.1] * 50, "utilization": [0.5] * 50,
+        "mempool_pressure": [0.3] * 50, "gas_volatility": [0.2] * 50,
+    })
+    built = _build_features(raw, horizon=5)
+    assert (built["thetanuts_iv"] == 0.0).all()
+
+
+def test_build_features_rejects_history_missing_required_columns():
+    import pandas as pd
+    import pytest as _pytest
+    from inference.train import _build_features
+
+    with _pytest.raises(ValueError, match="missing required columns"):
+        _build_features(pd.DataFrame({"score": [1, 2, 3]}), horizon=1)

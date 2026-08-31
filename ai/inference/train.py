@@ -1,32 +1,49 @@
 """Trains the EGSI forecast model and saves it to ai/models/ (ARCHITECTURE.md
 §4). Run from the ai/ directory:
 
-    python -m inference.train --history path/to/egsi_history.csv
+    # Train on real accumulated history (preferred)
+    python -m inference.train --from-gateway http://localhost:3000
 
-`--history` must be a CSV with one row per past cycle, columns: ema, rsi,
-momentum, last_score, base_fee, utilization, mempool_pressure,
-gas_volatility, target (target = the EGSI score one cycle later — i.e.
-what the model is trying to predict from that row's features). Building
-that CSV from real accumulated history is a separate, ongoing job (e.g. a
-small script logging every features/history.py + features/egsi.py output
-over time) — this module only trains against whatever CSV it's given.
+    # Or from a CSV of raw snapshots
+    python -m inference.train --history path/to/snapshots.csv
 
-With no --history (or too little data), generates a synthetic
-mean-reverting dataset instead, purely so this script — and the on-disk
-model format it produces — can be exercised end-to-end without real
-historical EGSI data, which doesn't exist yet for a brand-new market.
-Never treat a synthetic-trained model as fit to serve real forecasts;
-it exists to prove the pipeline works, not to predict anything real.
+    # Or exercise the pipeline with no data at all
+    python -m inference.train --synthetic
+
+`--from-gateway` pulls durable history from GET /api/v1/history. The AI
+service never reads the database itself (ARCHITECTURE.md §2 makes the API
+gateway the only client), so real history reaches this trainer through
+the gateway.
+
+Derived features (EMA/RSI/momentum) are computed here from the raw score
+series using the same features/history.py code the live service uses, so
+training features and serving features cannot drift apart — a
+train/serve skew bug that would otherwise be invisible until the model
+performed worse in production than in testing.
+
+**The forecast horizon matters.** EGSI-1H is a one-hour market
+(ARCHITECTURE.md §12), so the model should predict EGSI one hour ahead,
+not one cycle ahead. At the default 12-second cycle that is 300 rows, so
+meaningful training needs *hours* of accumulated history, not minutes.
+--horizon makes this explicit rather than silently training a
+one-cycle-ahead model and calling it an hourly forecast.
+
+If the trained model does not beat its naive baseline out-of-sample, it
+is saved but flagged, and the service will refuse to serve it (§4:
+"otherwise ship the baseline"). That refusal is the system working
+correctly, not a bug to route around.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import urllib.request
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
+from features.history import EgsiHistory
 from inference.baseline import last_value
 from inference.forecaster import FEATURE_NAMES, train
 
@@ -61,6 +78,65 @@ def _synthetic_history(n: int = 400, seed: int = 0) -> pd.DataFrame:
     return df
 
 
+def _fetch_from_gateway(base_url: str, limit: int = 5000) -> pd.DataFrame:
+    """Pulls raw snapshots from the gateway's GET /api/v1/history."""
+    url = f"{base_url.rstrip('/')}/api/v1/history?limit={limit}"
+    with urllib.request.urlopen(url, timeout=30) as response:
+        payload = json.loads(response.read())
+    rows = payload.get("history", [])
+    if not rows:
+        raise ValueError(
+            f"gateway returned no history from {url}. Let the AI service auto-cycle "
+            "for a while first, and check GASX_API_DATABASE_URL is set."
+        )
+    return pd.DataFrame(rows)
+
+
+def _build_features(raw: pd.DataFrame, horizon: int) -> pd.DataFrame:
+    """Turns raw snapshots into the exact FEATURE_NAMES the forecaster
+    expects, plus the target it should predict.
+
+    EMA/RSI/momentum are replayed through features/history.py's own
+    EgsiHistory — the same class the live service uses — rather than
+    recomputed with pandas here. Reimplementing them would risk a
+    train/serve skew that stays invisible until the model quietly
+    underperforms in production.
+
+    The target is the score `horizon` rows ahead, so the last `horizon`
+    rows are dropped (their future has not happened yet).
+    """
+    required = {"score", "base_fee", "utilization", "mempool_pressure", "gas_volatility"}
+    missing = required - set(raw.columns)
+    if missing:
+        raise ValueError(f"history is missing required columns: {sorted(missing)}")
+
+    history = EgsiHistory(max_len=10_000)
+    rows = []
+    for _, row in raw.iterrows():
+        history.push(int(row["score"]))
+        derived = history.features()
+        rows.append(
+            {
+                "ema": derived.ema,
+                "rsi": derived.rsi,
+                "momentum": derived.momentum,
+                "last_score": float(row["score"]),
+                "base_fee": float(row["base_fee"]),
+                "utilization": float(row["utilization"]),
+                "mempool_pressure": float(row["mempool_pressure"]),
+                "gas_volatility": float(row["gas_volatility"]),
+                # Absent Thetanuts signal reads as 0.0, matching how
+                # main.py builds the same feature dict when serving.
+                "thetanuts_iv": float(row.get("thetanutsIv") or row.get("thetanuts_iv") or 0.0),
+                "thetanuts_skew": float(row.get("thetanutsSkew") or row.get("thetanuts_skew") or 0.0),
+            }
+        )
+
+    df = pd.DataFrame(rows)
+    df["target"] = df["last_score"].shift(-horizon)
+    return df.dropna(subset=["target"]).reset_index(drop=True)
+
+
 def _load_history(path: str | None) -> pd.DataFrame:
     if path is None:
         print("No --history given — generating a synthetic dataset (pipeline check only, NOT real training data).")
@@ -72,11 +148,37 @@ def _load_history(path: str | None) -> pd.DataFrame:
     return df
 
 
-def main(history_path: str | None = None, test_fraction: float = 0.2) -> None:
-    df = _load_history(history_path)
+def main(
+    history_path: str | None = None,
+    gateway_url: str | None = None,
+    synthetic: bool = False,
+    horizon: int = 300,
+    test_fraction: float = 0.2,
+) -> None:
+    if gateway_url:
+        raw = _fetch_from_gateway(gateway_url)
+        print(f"Fetched {len(raw)} snapshots from {gateway_url}")
+        df = _build_features(raw, horizon)
+        print(f"Built {len(df)} training rows at horizon={horizon} cycles")
+    elif history_path:
+        raw = pd.read_csv(history_path)
+        df = _build_features(raw, horizon)
+    elif synthetic:
+        print("Synthetic dataset (pipeline check only, NOT real training data).")
+        df = _synthetic_history()
+    else:
+        raise SystemExit(
+            "Give one of --from-gateway URL, --history CSV, or --synthetic. "
+            "Refusing to silently train on fake data."
+        )
     split = int(len(df) * (1 - test_fraction))
     if split < 10 or len(df) - split < 10:
-        raise ValueError(f"not enough rows to train/test split (got {len(df)}); need at least ~50")
+        raise SystemExit(
+            f"Not enough history to train: {len(df)} usable rows after applying a "
+            f"{horizon}-cycle horizon. Need roughly 50+. At a 12s cycle, a 1-hour "
+            f"horizon needs several hours of accumulated readings before this is "
+            f"worth running — let it collect and try again."
+        )
 
     train_df, test_df = df.iloc[:split], df.iloc[split:]
     X_train, y_train = train_df[FEATURE_NAMES], train_df["target"]
@@ -118,7 +220,21 @@ def main(history_path: str | None = None, test_fraction: float = 0.2) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--history", default=None, help="path to a CSV of accumulated EGSI history")
+    parser.add_argument("--history", default=None, help="path to a CSV of raw EGSI snapshots")
+    parser.add_argument("--from-gateway", default=None, help="gateway base URL, e.g. http://localhost:3000")
+    parser.add_argument("--synthetic", action="store_true", help="train on synthetic data (pipeline check only)")
+    parser.add_argument(
+        "--horizon",
+        type=int,
+        default=300,
+        help="rows ahead to predict. 300 = 1 hour at the default 12s cycle, matching EGSI-1H.",
+    )
     parser.add_argument("--test-fraction", type=float, default=0.2, help="fraction of rows held out for testing")
     args = parser.parse_args()
-    main(history_path=args.history, test_fraction=args.test_fraction)
+    main(
+        history_path=args.history,
+        gateway_url=args.from_gateway,
+        synthetic=args.synthetic,
+        horizon=args.horizon,
+        test_fraction=args.test_fraction,
+    )

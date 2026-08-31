@@ -8,6 +8,28 @@ import type { FastifyInstance } from 'fastify';
 import type { GatewayDeps } from '../server.js';
 
 export function registerMarketRoutes(app: FastifyInstance, deps: GatewayDeps): void {
+  /**
+   * Durable EGSI history, oldest first. Exists so ai/inference/train.py
+   * can train on real accumulated readings instead of synthetic data,
+   * without the AI service connecting to the database itself —
+   * ARCHITECTURE.md §2 makes this gateway the only database client, so
+   * history reaches the trainer through here.
+   */
+  app.get<{ Querystring: { limit?: string; market?: string } }>(
+    '/api/v1/history',
+    async (request, reply) => {
+      if (!deps.db) {
+        return reply.status(503).send({
+          error: 'no database configured; set GASX_API_DATABASE_URL (see database/README.md)',
+        });
+      }
+      const market = request.query.market || 'EGSI-1H';
+      const limit = Number.parseInt(request.query.limit ?? '5000', 10);
+      const history = await deps.db.getEgsiHistory(market, Number.isFinite(limit) ? limit : 5000);
+      return { market, count: history.length, history };
+    },
+  );
+
   app.get('/api/v1/market', async () => {
     // Sui read failures propagate (caught by the server's default error
     // handler) — market state is this endpoint's core purpose, unlike

@@ -203,3 +203,85 @@ def test_train_returns_a_usable_forecaster():
     assert forecaster.is_model_loaded
     result = forecaster.predict(dict(zip(FEATURE_NAMES, X_test.iloc[0].tolist())))
     assert 0.0 <= result.expected_egsi <= 1000.0
+
+
+# ---------------------------------------------------------------------------
+# Model loading.
+#
+# main.py previously never loaded a trained model at all, so the service
+# served its fallback forever no matter how good a model sat in models/.
+# These cover the loader and, more importantly, the two gates that must
+# refuse a model rather than serve something misleading.
+# ---------------------------------------------------------------------------
+
+
+def _train_and_save(tmp_path):
+    from inference.forecaster import FEATURE_NAMES as names
+    import json as _json
+
+    X, y = _synthetic_dataset()
+    split = len(X) // 2
+    model = train(X.iloc[:split], y.iloc[:split], X.iloc[split:], y.iloc[split:],
+                  X.iloc[split:]["last_score"].tolist())
+    model.median.save_model(str(tmp_path / "egsi_median.txt"))
+    model.low.save_model(str(tmp_path / "egsi_low.txt"))
+    model.high.save_model(str(tmp_path / "egsi_high.txt"))
+    (tmp_path / "metadata.json").write_text(
+        _json.dumps({"beats_baseline": True, "feature_names": names})
+    )
+    return model
+
+
+def test_returns_none_when_no_model_has_been_saved(tmp_path):
+    from inference.forecaster import load_trained_model
+    assert load_trained_model(tmp_path) is None
+
+
+def test_loads_a_saved_model_and_it_serves_real_forecasts(tmp_path):
+    from inference.forecaster import load_trained_model
+    _train_and_save(tmp_path)
+
+    loaded = load_trained_model(tmp_path)
+    assert loaded is not None
+
+    forecaster = Forecaster(loaded)
+    assert forecaster.is_model_loaded
+    result = forecaster.predict({name: 400.0 for name in FEATURE_NAMES})
+    # The whole point: no longer the fallback.
+    assert result.model_version == "egsi-v1"
+    assert not result.model_version.endswith("-fallback")
+
+
+def test_refuses_a_model_that_did_not_beat_its_baseline(tmp_path):
+    """ARCHITECTURE.md §4 says ship the baseline in this case. Serving
+    the model anyway would be worse than the fallback it replaced."""
+    import json as _json
+    from inference.forecaster import load_trained_model
+    _train_and_save(tmp_path)
+    meta = _json.loads((tmp_path / "metadata.json").read_text())
+    meta["beats_baseline"] = False
+    (tmp_path / "metadata.json").write_text(_json.dumps(meta))
+
+    assert load_trained_model(tmp_path) is None
+
+
+def test_refuses_a_model_trained_on_a_different_feature_set(tmp_path):
+    """A stale model expects a different input shape and would silently
+    produce garbage rather than failing loudly."""
+    import json as _json
+    from inference.forecaster import load_trained_model
+    _train_and_save(tmp_path)
+    meta = _json.loads((tmp_path / "metadata.json").read_text())
+    meta["feature_names"] = ["ema", "rsi"]
+    (tmp_path / "metadata.json").write_text(_json.dumps(meta))
+
+    assert load_trained_model(tmp_path) is None
+
+
+def test_refuses_when_model_files_are_missing_despite_metadata(tmp_path):
+    import json as _json
+    from inference.forecaster import load_trained_model
+    (tmp_path / "metadata.json").write_text(
+        _json.dumps({"beats_baseline": True, "feature_names": FEATURE_NAMES})
+    )
+    assert load_trained_model(tmp_path) is None

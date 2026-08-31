@@ -139,8 +139,27 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 venv/bin/pytest
   drives confidence, and the band is treated as a normal distribution's
   ~80% interval to derive `P(EGSI > 500)`. Good enough for a demo, not a
   substitute for a properly calibrated model.
-- **`inference/train.py` runs end-to-end against synthetic data with no
-  `--history` given** — there's no real accumulated EGSI history for a
+- **Training on real history is now the default path.** `POST /cycle`
+  runs automatically on Ethereum's block time, the gateway persists
+  every reading to MySQL, and `python -m inference.train --from-gateway
+  http://localhost:3000` trains on that accumulated history. Derived
+  features (EMA/RSI/momentum) are replayed through the *same*
+  `features/history.py` the live service uses, so training and serving
+  cannot drift apart. `main.py` loads the resulting model at startup.
+- **The horizon has to match the market.** EGSI-1H is a one-hour
+  product, so `--horizon` defaults to 300 rows — one hour at the default
+  12-second cycle. That means meaningful training needs *hours* of
+  accumulated readings, not minutes. Until then `train.py` refuses with
+  a clear message rather than silently fitting a one-cycle-ahead model
+  and calling it an hourly forecast.
+- **A model that does not beat its baseline is not served.**
+  `load_trained_model` refuses to load one whose metadata records
+  `beats_baseline=false`, and also refuses one trained on a different
+  feature set (which would silently produce garbage). In both cases the
+  service keeps serving its honest fallback and the UI keeps saying so.
+  That refusal is the design working, not a bug to route around.
+- **`inference/train.py` can still run against synthetic data via
+  `--synthetic`** — there's no real accumulated EGSI history for a
   market that doesn't exist yet. This proves the train -> save -> load
   pipeline works, not that the resulting model can forecast anything
   real; never point `main.py` at a synthetic-trained model. Trained
