@@ -18,7 +18,8 @@ and talks to `ai/`'s FastAPI service over HTTP.
 | module | responsibility |
 |---|---|
 | `config` | environment-driven settings — port, AI service URL, risk policy constants, plus both adapters' own configs |
-| `riskPolicy` | ARCHITECTURE.md §8's Hard Risk Policy — `checkOrderRisk` (manual orders) and `checkHedgeRisk` (the future autonomous-hedge path) |
+| `riskPolicy` | ARCHITECTURE.md §8's Hard Risk Policy — `checkOrderRisk` (manual orders), `checkHedgeConfidence` (pre-RFQ gate), `checkHedgeRisk` (full hedge check) |
+| `exposure` | ETH-beta exposure — §10's "exposure breached threshold" trigger |
 | `aiClient` | thin HTTP client for `ai/main.py` — `GET /egsi/current`, `GET /forecast`, `POST /cycle` |
 | `server` | Fastify app factory, dependency-injected (`GatewayDeps`) so tests never touch a live network |
 | `routes/market` | `GET /api/v1/market` |
@@ -37,6 +38,9 @@ and talks to `ai/`'s FastAPI service over HTTP.
 | POST | `/api/v1/account/prepare-open` | prepares an `open_account` transaction |
 | POST | `/api/v1/account/prepare-deposit` | prepares a `deposit` transaction |
 | POST | `/api/v1/hedge/sync-signal` | fetches a live Thetanuts ETH `VolSignal` and forwards it into the AI service's `POST /cycle` |
+| POST | `/api/v1/hedge/assess` | computes ETH-beta exposure; read-only, no on-chain side effects |
+| POST | `/api/v1/hedge/evaluate` | the full §10 chain through to an approve/reject decision — **submits a real RFQ on Base mainnet** |
+| POST | `/api/v1/hedge/candidate` | re-polls an existing RFQ for late market-maker offers |
 
 Every `prepare*` endpoint returns `{transactionJson, summary}`
 (`blockchain/sui`'s `PreparedTransaction`) — the frontend's wallet
@@ -109,16 +113,15 @@ sandbox.
   API gateway's stack ("Storage"); this gateway is currently entirely
   stateless (every request re-reads Sui/the AI service fresh). Fine for
   a demo's request volume; add caching/persistence if that changes.
-- **The hedge bridge is read-and-forward only.** `POST /api/v1/hedge/sync-signal`
-  keeps EGSI's Thetanuts IV component current — it does not call
-  `blockchain/thetanuts`'s `createHedgeRequest`/`collectBestCandidate`
-  (the actual RFQ-hedge workflow), and it does not evaluate
-  `checkHedgeRisk` against anything. Wiring "ETH-beta exposure breached
-  a threshold → request a hedge quote → risk-check the best candidate"
-  (ARCHITECTURE.md §10's Hedge Flow) is real, not-yet-built work on top
-  of pieces that already exist (`blockchain/thetanuts`'s RFQ functions,
-  `riskPolicy.checkHedgeRisk`) — this gateway doesn't yet call either
-  from a route.
+- **The hedge flow stops before execution.** `POST /api/v1/hedge/evaluate`
+  runs the whole of ARCHITECTURE.md §10 — assess ETH-beta exposure, pull
+  MM pricing, submit an RFQ, collect the best candidate, apply §8's hard
+  risk policy — and returns the approve/reject decision. It never calls
+  Thetanuts' `settleQuotationEarly`/`settleQuotation`, so no options
+  position is ever opened. That final step is Phase 5's autonomous
+  execution; it spends real money on Base mainnet and should be a
+  deliberate, separately-reviewed addition rather than something that
+  starts happening because a threshold tripped.
 - **No authentication.** Every endpoint is open. A `trader`/`marginAccountId`
   field in a request body is trusted as given — this gateway prepares a
   transaction for *someone* to sign, and Sui's own signature requirement
@@ -138,6 +141,21 @@ sandbox.
   without touching a network, mirroring `blockchain/thetanuts` and
   `blockchain/sui`'s own "mock the SDK boundary, test the real logic"
   convention.
+- **The two hedge risk constants apply at different moments, on
+  purpose.** `MIN_MODEL_CONFIDENCE` is checked *before* submitting an
+  RFQ (via `checkHedgeConfidence`), because a hedge that would fail on
+  confidence anyway shouldn't first spend real gas on Base mainnet.
+  `MAX_HEDGE_NOTIONAL` can only be checked *after*, against the actual
+  quoted premium, since that number doesn't exist until a market maker
+  quotes. Applying `MAX_HEDGE_NOTIONAL` to the exposure being hedged as
+  a stand-in would be a category error — a large book hedged with a
+  cheap option is exactly the normal case.
+- **The ETH beta is a configured assumption, not a measured
+  correlation.** `exposure.ts` needs a coefficient relating EGSI
+  exposure to ETH exposure; a real one would come from regressing EGSI
+  returns against ETH returns, and GASX has no trading history to
+  regress. Every figure the exposure panel shows inherits that
+  assumption's error.
 - **`checkOrderRisk` doesn't apply `MIN_MODEL_CONFIDENCE`.** A human
   placing their own order isn't "the AI requesting an action" (§8's own
   framing) — gating a manual trade on model confidence would be a

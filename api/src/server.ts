@@ -10,6 +10,7 @@ import type { ChainAdapter } from '@gasx/sui-adapter';
 import type { HedgeProvider } from '@gasx/thetanuts-adapter';
 import type { AiClient } from './aiClient.js';
 import { AiServiceError } from './aiClient.js';
+import type { ExposureConfig } from './exposure.js';
 import type { RiskPolicyConfig } from './riskPolicy.js';
 import { registerAccountRoutes } from './routes/account.js';
 import { registerHedgeRoutes } from './routes/hedge.js';
@@ -21,6 +22,7 @@ export interface GatewayDeps {
   hedgeProvider: HedgeProvider;
   aiClient: AiClient;
   riskPolicy: RiskPolicyConfig;
+  exposureConfig: ExposureConfig;
   /** Defaults to true. Tests pass false to keep output clean. */
   logger?: boolean;
 }
