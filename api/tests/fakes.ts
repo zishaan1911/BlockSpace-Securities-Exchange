@@ -144,6 +144,13 @@ export class FakeAiClient implements AiClient {
     return this.forecast;
   }
 
+  restoredScores: number[] | null = null;
+
+  async restoreHistory(scores: number[]): Promise<number | null> {
+    this.restoredScores = scores;
+    return scores.length;
+  }
+
   async runCycle(input?: RunCycleInput): Promise<EgsiSnapshotDto> {
     if (this.runCycleError) throw this.runCycleError;
     this.lastRunCycleInput = input;

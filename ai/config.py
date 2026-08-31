@@ -28,5 +28,12 @@ class Settings(BaseSettings):
     # EGSI history / forecasting.
     egsi_history_max_len: int = 200
 
+    # Seconds between automatic EGSI cycles. Defaults to 12, matching
+    # Ethereum's block time — polling faster cannot surface new data
+    # (there is no new block to read), it just burns RPC rate limit and
+    # recomputes an identical score. Set to 0 to disable auto-cycling
+    # and drive the service manually via POST /cycle.
+    cycle_interval_seconds: float = 12.0
+
 
 settings = Settings()

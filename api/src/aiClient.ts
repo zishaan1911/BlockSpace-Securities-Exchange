@@ -40,6 +40,11 @@ export interface AiClient {
   getCurrentEgsi(): Promise<EgsiSnapshotDto | null>;
   getForecast(): Promise<ForecastDto | null>;
   runCycle(input?: RunCycleInput): Promise<EgsiSnapshotDto>;
+  /** Warm-starts the AI service's in-memory EGSI history from durable
+   * storage. Returns how many scores it accepted, or null on failure —
+   * best-effort, since a cold forecaster is a degraded start, not a
+   * reason to refuse to boot. */
+  restoreHistory(scores: number[]): Promise<number | null>;
 }
 
 /** Thrown by runCycle (which callers need to actually observe failures
@@ -81,6 +86,21 @@ export class HttpAiClient implements AiClient {
       const res = await fetch(`${this.baseUrl}/forecast`);
       if (!res.ok) return null;
       return (await res.json()) as ForecastDto;
+    } catch {
+      return null;
+    }
+  }
+
+  async restoreHistory(scores: number[]): Promise<number | null> {
+    try {
+      const res = await fetch(`${this.baseUrl}/history/restore`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ scores }),
+      });
+      if (!res.ok) return null;
+      const body = (await res.json()) as { restored?: number };
+      return body.restored ?? null;
     } catch {
       return null;
     }

@@ -16,7 +16,11 @@ import { ForecastPanel, MarketPanel } from './components/Panels';
 import { OrderTicket } from './components/OrderTicket';
 import { HedgePanel } from './components/HedgePanel';
 
-const POLL_MS = 15_000;
+// The AI service auto-cycles on Ethereum's ~12s block time, so polling
+// much faster than this cannot surface a new reading — there is no new
+// block to have read. 5s keeps the screen within a few seconds of the
+// chain without hammering the gateway for values that have not changed.
+const POLL_MS = 5_000;
 
 export default function App() {
   const [data, setData] = useState<MarketResponse | null>(null);

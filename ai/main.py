@@ -11,7 +11,12 @@ or from the repo root:
 """
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import logging
+
 from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
 
 from config import settings
 from features.egsi import EgsiNormalizationConfig, EgsiWeights, compute_egsi
@@ -20,7 +25,28 @@ from inference.forecaster import Forecaster
 from ingestion.ethereum import EthereumIngestionClient
 from schemas import CycleRequest, EgsiSnapshot, ForecastOutput
 
-app = FastAPI(title="GASX AI Service", version="0.1.0")
+logger = logging.getLogger("gasx.ai")
+
+
+@contextlib.asynccontextmanager
+async def _lifespan(app: FastAPI):
+    """Starts and cleanly stops the background cycle loop. Uses the
+    lifespan API rather than the deprecated @app.on_event hooks."""
+    task = None
+    if settings.cycle_interval_seconds > 0:
+        task = asyncio.create_task(_auto_cycle_loop())
+    else:
+        logger.info("auto-cycling disabled (cycle_interval_seconds=0); drive with POST /cycle")
+    try:
+        yield
+    finally:
+        if task:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+
+app = FastAPI(title="GASX AI Service", version="0.1.0", lifespan=_lifespan)
 
 # Single-market, in-process state (ARCHITECTURE.md's Decisions §12: "Cache:
 # in-memory in the API" — the AI service follows the same convention).
@@ -74,16 +100,10 @@ def get_forecast() -> ForecastOutput:
     return _forecaster.predict(feature_dict)
 
 
-@app.post("/cycle", response_model=EgsiSnapshot)
-def run_cycle(thetanuts: CycleRequest | None = None) -> EgsiSnapshot:
-    """One ingest -> compute EGSI -> update history cycle. Does NOT
-    publish to Sui — that's a separate, explicit step (POST /publish),
-    since an on-chain write with real (testnet-or-real) gas cost should
-    never happen as a side effect of a read/compute loop.
-
-    `thetanuts` is optional (ARCHITECTURE.md §3, §4) — see CycleRequest's
-    docstring in schemas.py for why there's no automatic live wiring to
-    blockchain/thetanuts yet."""
+def _perform_cycle(thetanuts: CycleRequest | None = None) -> EgsiSnapshot:
+    """The actual ingest -> compute -> record step, shared by the HTTP
+    endpoint and the background loop so both go through identical logic
+    rather than drifting apart."""
     global _latest_snapshot, _latest_thetanuts_skew
     client = _ingestion_client()
     metrics = client.fetch_latest_metrics()
@@ -93,6 +113,75 @@ def run_cycle(thetanuts: CycleRequest | None = None) -> EgsiSnapshot:
     _history.push(snapshot.score)
     _latest_snapshot = snapshot
     return snapshot
+
+
+async def _auto_cycle_loop() -> None:
+    """Keeps EGSI current without anyone poking POST /cycle.
+
+    Interval defaults to Ethereum's ~12s block time: cycling faster
+    cannot surface new data, since there is no new block to read — it
+    only burns RPC rate limit and recomputes an identical score.
+
+    Ingestion is blocking (web3.py is synchronous), so it runs in a
+    thread rather than stalling the event loop and making every HTTP
+    request wait behind it. Failures are logged and the loop continues:
+    one unreachable RPC call should not permanently stop the service
+    from updating.
+    """
+    interval = settings.cycle_interval_seconds
+    while True:
+        try:
+            snapshot = await asyncio.to_thread(_perform_cycle)
+            logger.info("auto-cycle: EGSI %s at block %s", snapshot.score, snapshot.block_number)
+        except Exception as exc:
+            logger.warning("auto-cycle failed, will retry in %ss: %s", interval, exc)
+        await asyncio.sleep(interval)
+
+
+class HistoryRestoreRequest(BaseModel):
+    """Past EGSI scores, oldest first, replayed into the in-memory
+    history buffer on startup."""
+
+    scores: list[int] = Field(default_factory=list)
+
+
+@app.post("/history/restore")
+def restore_history(request: HistoryRestoreRequest) -> dict:
+    """Warm-starts EgsiHistory from durable storage.
+
+    The AI service never touches the database directly (ARCHITECTURE.md
+    §2: the API gateway is the only client), so the gateway reads the
+    persisted history and pushes it here at startup. Without this, a
+    restart resets the forecaster's EMA/RSI/momentum context to nothing
+    and it serves low-confidence output until enough new cycles
+    accumulate — even though the readings were durably stored all along.
+
+    Replaces rather than appends, so a repeated call is idempotent
+    instead of duplicating history.
+    """
+    global _history
+    restored = EgsiHistory(max_len=settings.egsi_history_max_len)
+    for score in request.scores:
+        restored.push(score)
+    _history = restored
+    return {"restored": len(restored)}
+
+
+@app.post("/cycle", response_model=EgsiSnapshot)
+def run_cycle(thetanuts: CycleRequest | None = None) -> EgsiSnapshot:
+    """One ingest -> compute EGSI -> update history cycle. Does NOT
+    publish to Sui — that's a separate, explicit step (POST /publish),
+    since an on-chain write with real (testnet-or-real) gas cost should
+    never happen as a side effect of a read/compute loop.
+
+    `thetanuts` is optional (ARCHITECTURE.md §3, §4) — see CycleRequest's
+    docstring in schemas.py for why there's no automatic live wiring to
+    blockchain/thetanuts yet.
+
+    Still useful with auto-cycling on: this is how a caller supplies a
+    live Thetanuts signal (the background loop has none) and how the
+    gateway's /hedge/sync-signal route drives a cycle on demand."""
+    return _perform_cycle(thetanuts)
 
 
 @app.post("/publish")
