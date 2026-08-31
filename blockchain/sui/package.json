@@ -1,0 +1,25 @@
+{
+  "name": "@gasx/sui-adapter",
+  "version": "0.1.0",
+  "private": true,
+  "description": "GASX's Sui adapter (ARCHITECTURE.md \u00a72, \u00a79): reads Market/OracleState, and prepares (never signs) transactions for margin accounts and orders.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@mysten/sui": "^2.27.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

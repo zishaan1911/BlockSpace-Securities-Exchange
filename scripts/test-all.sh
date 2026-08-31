@@ -4,11 +4,15 @@
 #   - engine                  (C++)
 #   - ai                      (Python)
 #   - blockchain/thetanuts    (TypeScript)
+#   - blockchain/sui          (TypeScript)
+#   - api                      (TypeScript)
 #
 # Usage: ./scripts/test-all.sh
 # Requires: sui CLI on PATH, cmake + a C++17 compiler, either an
 # ai/venv (see ai/README.md) or pytest importable via `python3 -m
-# pytest`, and Node.js >= 18 + npm for blockchain/thetanuts.
+# pytest`, and Node.js >= 18 + npm for the TypeScript stacks. api/
+# depends on blockchain/thetanuts and blockchain/sui being built first
+# (their dist/ must exist) — this script builds them in that order.
 
 set -uo pipefail
 
@@ -81,7 +85,9 @@ if command -v npm >/dev/null 2>&1; then
     echo "-- node_modules missing, running npm install first"
     (cd "$REPO_ROOT/blockchain/thetanuts" && npm install)
   fi
-  (cd "$REPO_ROOT/blockchain/thetanuts" && npm run typecheck && npm test)
+  # build (not just typecheck) so api/'s file: dependency on this
+  # package's dist/ resolves later in this script.
+  (cd "$REPO_ROOT/blockchain/thetanuts" && npm run typecheck && npm run build && npm test)
   THETANUTS_STATUS=$?
   if [ "$THETANUTS_STATUS" -ne 0 ]; then
     echo "!! Thetanuts adapter tests FAILED"
@@ -92,6 +98,48 @@ if command -v npm >/dev/null 2>&1; then
 else
   echo "!! npm not found on PATH — skipping Thetanuts adapter tests"
   echo "   (see blockchain/thetanuts/README.md for setup instructions)"
+  FAILED=1
+fi
+
+echo
+echo "==> blockchain/sui (TypeScript)"
+if command -v npm >/dev/null 2>&1; then
+  if [ ! -d "$REPO_ROOT/blockchain/sui/node_modules" ]; then
+    echo "-- node_modules missing, running npm install first"
+    (cd "$REPO_ROOT/blockchain/sui" && npm install)
+  fi
+  (cd "$REPO_ROOT/blockchain/sui" && npm run typecheck && npm run build && npm test)
+  SUI_STATUS=$?
+  if [ "$SUI_STATUS" -ne 0 ]; then
+    echo "!! Sui adapter tests FAILED"
+    FAILED=1
+  else
+    echo "-- Sui adapter tests passed"
+  fi
+else
+  echo "!! npm not found on PATH — skipping Sui adapter tests"
+  echo "   (see blockchain/sui/README.md for setup instructions)"
+  FAILED=1
+fi
+
+echo
+echo "==> api (TypeScript)"
+if command -v npm >/dev/null 2>&1; then
+  if [ ! -d "$REPO_ROOT/api/node_modules" ]; then
+    echo "-- node_modules missing, running npm install first"
+    (cd "$REPO_ROOT/api" && npm install)
+  fi
+  (cd "$REPO_ROOT/api" && npm run typecheck && npm test)
+  API_STATUS=$?
+  if [ "$API_STATUS" -ne 0 ]; then
+    echo "!! API gateway tests FAILED"
+    FAILED=1
+  else
+    echo "-- API gateway tests passed"
+  fi
+else
+  echo "!! npm not found on PATH — skipping API gateway tests"
+  echo "   (see api/README.md for setup instructions)"
   FAILED=1
 fi
 

@@ -1,0 +1,160 @@
+# GASX API gateway
+
+TypeScript (Fastify) gateway implementing ARCHITECTURE.md §2's API
+gateway component and §9's Trade Flow: "Get market state" and "Prepare
+order (pre-trade risk checks)" → a Sui transaction payload for the
+frontend's wallet to sign. Also implements ARCHITECTURE.md §8's Hard
+Risk Policy (enforced here, "outside the language model, in the API/
+contracts") and the bridge that keeps EGSI's Thetanuts IV component live
+(closing the gap `ai/README.md` and `blockchain/thetanuts/README.md`
+both flagged: "that's the API gateway's job once Phase 2 exists").
+
+Depends on `blockchain/sui` (transaction preparation) and
+`blockchain/thetanuts` (live ETH vol signal) as local workspace packages,
+and talks to `ai/`'s FastAPI service over HTTP.
+
+## Modules
+
+| module | responsibility |
+|---|---|
+| `config` | environment-driven settings — port, AI service URL, risk policy constants, plus both adapters' own configs |
+| `riskPolicy` | ARCHITECTURE.md §8's Hard Risk Policy — `checkOrderRisk` (manual orders) and `checkHedgeRisk` (the future autonomous-hedge path) |
+| `aiClient` | thin HTTP client for `ai/main.py` — `GET /egsi/current`, `GET /forecast`, `POST /cycle` |
+| `server` | Fastify app factory, dependency-injected (`GatewayDeps`) so tests never touch a live network |
+| `routes/market` | `GET /api/v1/market` |
+| `routes/orders` | `POST /api/v1/orders/prepare`, `POST /api/v1/orders/prepare-cancel` |
+| `routes/account` | `POST /api/v1/account/prepare-open`, `POST /api/v1/account/prepare-deposit` |
+| `routes/hedge` | `POST /api/v1/hedge/sync-signal` |
+
+## Endpoints
+
+| method | path | does |
+|---|---|---|
+| GET | `/api/v1/health` | liveness check |
+| GET | `/api/v1/market` | Sui `Market`/`OracleState` + the AI service's current EGSI + forecast, combined |
+| POST | `/api/v1/orders/prepare` | risk-checks then prepares a `place_order` transaction |
+| POST | `/api/v1/orders/prepare-cancel` | prepares a `cancel_order` transaction (no risk check — the Move contract itself never gates cancellation on market state) |
+| POST | `/api/v1/account/prepare-open` | prepares an `open_account` transaction |
+| POST | `/api/v1/account/prepare-deposit` | prepares a `deposit` transaction |
+| POST | `/api/v1/hedge/sync-signal` | fetches a live Thetanuts ETH `VolSignal` and forwards it into the AI service's `POST /cycle` |
+
+Every `prepare*` endpoint returns `{transactionJson, summary}`
+(`blockchain/sui`'s `PreparedTransaction`) — the frontend's wallet
+deserializes and signs it. This gateway never holds a private key or
+signs anything itself.
+
+## Run
+
+Build the two adapter packages first — this gateway depends on them as
+local `file:` packages, and needs their compiled `dist/` to exist for
+both typechecking and running:
+
+```bash
+cd blockchain/sui && npm install && npm run build && cd ../..
+cd blockchain/thetanuts && npm install && npm run build && cd ../..
+```
+
+Then:
+
+```bash
+cd api
+npm install
+cp .env.example .env   # also fill in blockchain/sui/.env and blockchain/thetanuts/.env
+npm run typecheck
+npm test
+npm run dev             # or: npm run build && npm start
+```
+
+The AI service (`ai/`) needs to be running separately for `/api/v1/market`
+and `/api/v1/hedge/sync-signal` to do anything useful — see `ai/README.md`.
+
+## What's actually verified in Claude's sandbox vs. what needs
+## verification on your machine
+
+Same split as every other module in this repo, for the same reason: no
+network egress to Sui, Base, or a locally-running AI service from that
+sandbox.
+
+- **Fully tested, real, in-sandbox**: `riskPolicy.ts`'s `checkOrderRisk`/
+  `checkHedgeRisk` (22 tests, pure functions) and every route (18 tests,
+  via Fastify's `.inject()` against hand-written fakes implementing
+  `ChainAdapter`/`HedgeProvider`/`AiClient` — covering success paths,
+  validation failures, risk-policy rejections, and both partial-failure
+  and total-failure behavior for the AI service and Thetanuts calls).
+  Typechecks and builds cleanly.
+- **NOT exercised end-to-end**: no test here ever talks to a real Sui
+  node, a real Thetanuts endpoint, or a real running AI service — that
+  needs all three actually up and reachable, which is exactly what
+  `blockchain/sui/README.md` and `blockchain/thetanuts/README.md` already
+  flag as unverified from their own adapters. Start the AI service
+  locally, fill in both adapters' `.env` files, and hit `GET /api/v1/market`
+  for real before trusting any of this beyond "the logic is right
+  against fakes."
+
+## What this gateway does NOT do (gaps worth knowing about)
+
+- **No WebSocket support.** ARCHITECTURE.md §2 describes the gateway as
+  "REST + WebSocket," but only REST is implemented here — real-time
+  order book / position push updates aren't built. Fine for a first
+  cut where the frontend can poll `GET /api/v1/market`; a real trading
+  UI eventually wants push updates instead.
+- **No real order book.** There's no indexer yet, so this gateway
+  cannot list resting `Order` objects the way a real order book display
+  needs. `GET /api/v1/market` returns Market config + EGSI +
+  forecast, matching ARCHITECTURE.md §9's phrase "EGSI + orderbook +
+  forecast" only partially — the orderbook piece needs a real indexer,
+  a separate, not-yet-built piece of infrastructure (`indexer/` is still
+  an empty scaffold in the repo root).
+- **No PostgreSQL.** ARCHITECTURE.md §2 lists Postgres as part of the
+  API gateway's stack ("Storage"); this gateway is currently entirely
+  stateless (every request re-reads Sui/the AI service fresh). Fine for
+  a demo's request volume; add caching/persistence if that changes.
+- **The hedge bridge is read-and-forward only.** `POST /api/v1/hedge/sync-signal`
+  keeps EGSI's Thetanuts IV component current — it does not call
+  `blockchain/thetanuts`'s `createHedgeRequest`/`collectBestCandidate`
+  (the actual RFQ-hedge workflow), and it does not evaluate
+  `checkHedgeRisk` against anything. Wiring "ETH-beta exposure breached
+  a threshold → request a hedge quote → risk-check the best candidate"
+  (ARCHITECTURE.md §10's Hedge Flow) is real, not-yet-built work on top
+  of pieces that already exist (`blockchain/thetanuts`'s RFQ functions,
+  `riskPolicy.checkHedgeRisk`) — this gateway doesn't yet call either
+  from a route.
+- **No authentication.** Every endpoint is open. A `trader`/`marginAccountId`
+  field in a request body is trusted as given — this gateway prepares a
+  transaction for *someone* to sign, and Sui's own signature requirement
+  is the actual authorization boundary (a prepared transaction for
+  address X is useless without X's wallet signing it), but there's
+  nothing here stopping one address from asking this gateway to prepare
+  a transaction *as if* for another address. Not a real vulnerability
+  given signing is the true gate, but worth knowing before exposing this
+  publicly.
+
+## Design notes
+
+- **Dependency injection throughout** (`GatewayDeps`) — `buildServer`
+  takes `ChainAdapter`/`HedgeProvider`/`AiClient` as plain arguments
+  rather than constructing them internally, so every route's logic
+  (validation, risk checks, response shaping) is tested against fakes
+  without touching a network, mirroring `blockchain/thetanuts` and
+  `blockchain/sui`'s own "mock the SDK boundary, test the real logic"
+  convention.
+- **`checkOrderRisk` doesn't apply `MIN_MODEL_CONFIDENCE`.** A human
+  placing their own order isn't "the AI requesting an action" (§8's own
+  framing) — gating a manual trade on model confidence would be a
+  category error. That constant is reserved for `checkHedgeRisk`
+  instead, for whenever the not-yet-built hedge-settlement route needs
+  it.
+- **`GET /api/v1/market` degrades gracefully, `POST /api/v1/hedge/sync-signal`
+  doesn't.** `aiClient.getCurrentEgsi()`/`getForecast()` return `null`
+  on any failure rather than throwing — a down AI service shouldn't take
+  the whole market-state response down with it. `aiClient.runCycle()`
+  throws instead, because the hedge-sync route's entire job is making
+  that call succeed; silently swallowing its failure would be worse than
+  a loud 502.
+- **`preparePlaceOrder`'s slippage check needs a reference price**, and
+  the only one available right now is the oracle's own last-published
+  EGSI value (`market.oracle.price`) — not independent, since the same
+  AI service that computes EGSI is also what would eventually feed a
+  forecast-based reference. Good enough for catching a wildly mistyped
+  order price; not a substitute for real market-depth-aware slippage
+  protection once a real order book/indexer exists.
