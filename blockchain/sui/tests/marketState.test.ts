@@ -63,6 +63,7 @@ describe('parseOracleFields', () => {
     has_price: true,
     last_update_ms: '1700000000000',
     max_staleness_ms: '60000',
+    max_price: '1000',
   };
 
   it('parses all fields', () => {
@@ -71,6 +72,7 @@ describe('parseOracleFields', () => {
     expect(result.hasPrice).toBe(true);
     expect(result.lastUpdateMs).toBe(1700000000000);
     expect(result.maxStalenessMs).toBe(60000);
+    expect(result.maxPrice).toBe(1000);
   });
 
   it('reads isFreshApprox true when within the staleness window', () => {

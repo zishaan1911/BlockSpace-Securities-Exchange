@@ -80,7 +80,7 @@ describe('POST /api/v1/orders/prepare', () => {
   it('accepts a valid order and returns a prepared transaction', async () => {
     chainAdapter.marketState = makeMarketState({
       tickSize: 10,
-      oracle: { oracleId: '0xoracle', price: 500, hasPrice: true, lastUpdateMs: 0, maxStalenessMs: 0, isFreshApprox: true },
+      oracle: { oracleId: '0xoracle', price: 500, hasPrice: true, lastUpdateMs: 0, maxStalenessMs: 0, maxPrice: 1000, isFreshApprox: true },
     });
 
     const res = await app.inject({ method: 'POST', url: '/api/v1/orders/prepare', payload: validBody });
@@ -119,7 +119,7 @@ describe('POST /api/v1/orders/prepare', () => {
   it('passes the oracle price as the slippage reference price', async () => {
     chainAdapter.marketState = makeMarketState({
       tickSize: 1,
-      oracle: { oracleId: '0xoracle', price: 500, hasPrice: true, lastUpdateMs: 0, maxStalenessMs: 0, isFreshApprox: true },
+      oracle: { oracleId: '0xoracle', price: 500, hasPrice: true, lastUpdateMs: 0, maxStalenessMs: 0, maxPrice: 1000, isFreshApprox: true },
     });
 
     // 600 vs reference 500 is 20% away — well outside a 1% MAX_SLIPPAGE.

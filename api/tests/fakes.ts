@@ -27,6 +27,7 @@ export function makeMarketState(overrides: Partial<MarketState> = {}): MarketSta
       hasPrice: true,
       lastUpdateMs: 1_700_000_000_000,
       maxStalenessMs: 60_000,
+      maxPrice: 1000,
       isFreshApprox: true,
     },
     ...overrides,

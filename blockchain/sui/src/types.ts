@@ -29,6 +29,10 @@ export interface OracleState {
   hasPrice: boolean;
   lastUpdateMs: number;
   maxStalenessMs: number;
+  /** A published price above this is rejected on-chain
+   * (contracts/gasx/sources/oracle.move's update_price) — the EGSI 0-1000
+   * scale's actual enforced ceiling, not just a documented convention. */
+  maxPrice: number;
   /** Computed client-side from lastUpdateMs/maxStalenessMs against the
    * time the read happened — not read from chain (the Move contract's
    * own is_fresh() takes a live Clock; this is an approximation for

@@ -86,6 +86,7 @@ export function parseOracleFields(
     hasPrice,
     lastUpdateMs,
     maxStalenessMs,
+    maxPrice: moveU64(fields.max_price, 'max_price'),
     isFreshApprox: hasPrice && nowMs - lastUpdateMs <= maxStalenessMs,
   };
 }

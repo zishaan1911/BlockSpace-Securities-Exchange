@@ -4,6 +4,12 @@
 /// push prices itself. Consumers (settlement, pricing) must check
 /// `is_fresh`/`assert_fresh` before trusting a price — a stale oracle must
 /// block settlement rather than settle against a stale value.
+///
+/// `update_price` also rejects a price above `max_price` (ARCHITECTURE.md
+/// §6: "Settlement rejects stale, out-of-range or wrong-market updates") —
+/// a compromised or buggy publisher key should not be able to push a value
+/// outside the valid EGSI 0-1000 scale on-chain, regardless of what any
+/// off-chain publisher client validates before submitting.
 module gasx::oracle {
     use sui::object::{Self, UID, ID};
     use sui::tx_context::{Self, TxContext};
@@ -14,6 +20,7 @@ module gasx::oracle {
 
     const E_NOT_PUBLISHER: u64 = 0;
     const E_STALE_PRICE: u64 = 1;
+    const E_PRICE_OUT_OF_RANGE: u64 = 2;
 
     /// Shared object holding the latest published EGSI value.
     public struct OracleState has key {
@@ -29,6 +36,13 @@ module gasx::oracle {
         publisher: address,
         /// A price older than this many ms is considered stale.
         max_staleness_ms: u64,
+        /// A published price above this is rejected — see the module doc
+        /// comment. The valid EGSI scale is 0-1000 (ARCHITECTURE.md §3),
+        /// so this is normally set to 1000 at creation, but is left
+        /// admin-adjustable (set_max_price) for the same reason
+        /// max_staleness_ms is: no need to redeploy a whole new oracle to
+        /// change a single bound.
+        max_price: u64,
     }
 
     /// Admin-gated: create and share a new oracle for a market.
@@ -36,6 +50,7 @@ module gasx::oracle {
         _admin: &AdminCap,
         initial_publisher: address,
         max_staleness_ms: u64,
+        max_price: u64,
         ctx: &mut TxContext,
     ): ID {
         let oracle = OracleState {
@@ -45,6 +60,7 @@ module gasx::oracle {
             last_update_ms: 0,
             publisher: initial_publisher,
             max_staleness_ms,
+            max_price,
         };
         let oracle_id = object::id(&oracle);
         transfer::share_object(oracle);
@@ -52,7 +68,9 @@ module gasx::oracle {
     }
 
     /// Publisher-gated: push a new EGSI value with the current chain
-    /// timestamp.
+    /// timestamp. Rejects a price above max_price (see the module doc
+    /// comment) — checked before any state is mutated, so a rejected call
+    /// leaves the oracle exactly as it was.
     public fun update_price(
         oracle: &mut OracleState,
         price: u64,
@@ -60,6 +78,7 @@ module gasx::oracle {
         ctx: &TxContext,
     ) {
         assert!(tx_context::sender(ctx) == oracle.publisher, E_NOT_PUBLISHER);
+        assert!(price <= oracle.max_price, E_PRICE_OUT_OF_RANGE);
         oracle.price = price;
         oracle.has_price = true;
         oracle.last_update_ms = clock::timestamp_ms(clock);
@@ -76,6 +95,11 @@ module gasx::oracle {
         oracle.max_staleness_ms = max_staleness_ms;
     }
 
+    /// Admin-gated: adjust the maximum acceptable published price.
+    public fun set_max_price(_admin: &AdminCap, oracle: &mut OracleState, max_price: u64) {
+        oracle.max_price = max_price;
+    }
+
     public fun price(oracle: &OracleState): u64 {
         oracle.price
     }
@@ -86,6 +110,10 @@ module gasx::oracle {
 
     public fun publisher(oracle: &OracleState): address {
         oracle.publisher
+    }
+
+    public fun max_price(oracle: &OracleState): u64 {
+        oracle.max_price
     }
 
     public fun is_fresh(oracle: &OracleState, clock: &Clock): bool {
@@ -103,6 +131,7 @@ module gasx::oracle {
     public fun create_oracle_for_testing(
         initial_publisher: address,
         max_staleness_ms: u64,
+        max_price: u64,
         ctx: &mut TxContext,
     ): OracleState {
         OracleState {
@@ -112,6 +141,7 @@ module gasx::oracle {
             last_update_ms: 0,
             publisher: initial_publisher,
             max_staleness_ms,
+            max_price,
         }
     }
 
@@ -125,7 +155,9 @@ module gasx::oracle {
     /// called on an object within the same transaction that created it, so
     /// this is used instead once a test has advanced past that point.
     public fun destroy_for_testing(oracle: OracleState) {
-        let OracleState { id, price: _, has_price: _, last_update_ms: _, publisher: _, max_staleness_ms: _ } = oracle;
+        let OracleState {
+            id, price: _, has_price: _, last_update_ms: _, publisher: _, max_staleness_ms: _, max_price: _,
+        } = oracle;
         object::delete(id);
     }
 }
