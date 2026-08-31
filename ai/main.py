@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
@@ -21,7 +22,7 @@ from pydantic import BaseModel, Field
 from config import settings
 from features.egsi import EgsiNormalizationConfig, EgsiWeights, compute_egsi
 from features.history import EgsiHistory
-from inference.forecaster import Forecaster
+from inference.forecaster import Forecaster, load_trained_model
 from ingestion.ethereum import EthereumIngestionClient
 from schemas import CycleRequest, EgsiSnapshot, ForecastOutput
 
@@ -53,7 +54,13 @@ app = FastAPI(title="GASX AI Service", version="0.1.0", lifespan=_lifespan)
 # EGSI-1H is the only market for this hackathon (ARCHITECTURE.md §12), so
 # one history buffer / one forecaster instance is enough.
 _history = EgsiHistory(max_len=settings.egsi_history_max_len)
-_forecaster = Forecaster()  # no trained model loaded yet — see inference/train.py; serves the fallback forecast until one is
+# Loads a trained model from ai/models/ if one exists AND it beat its
+# naive baseline out-of-sample. If not, Forecaster serves the honest
+# fallback and /forecast reports model_version "egsi-v1-fallback" — see
+# inference/train.py for how to produce a real one from accumulated
+# history.
+_MODELS_DIR = Path(__file__).resolve().parent / "models"
+_forecaster = Forecaster(load_trained_model(_MODELS_DIR))
 _latest_snapshot: EgsiSnapshot | None = None
 # Thetanuts skew isn't part of EGSI's own formula (ARCHITECTURE.md §3
 # only lists IV), but it is a forecast feature (§4) — tracked separately
