@@ -9,7 +9,9 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import type { ChainAdapter } from '@gasx/sui-adapter';
 import type { HedgeProvider } from '@gasx/thetanuts-adapter';
 import type { AiClient } from './aiClient.js';
+import type { Database } from './db.js';
 import { AiServiceError } from './aiClient.js';
+import type { ExposureConfig } from './exposure.js';
 import type { RiskPolicyConfig } from './riskPolicy.js';
 import { registerAccountRoutes } from './routes/account.js';
 import { registerHedgeRoutes } from './routes/hedge.js';
@@ -21,6 +23,10 @@ export interface GatewayDeps {
   hedgeProvider: HedgeProvider;
   aiClient: AiClient;
   riskPolicy: RiskPolicyConfig;
+  exposureConfig: ExposureConfig;
+  /** Null when no database is configured; every call site treats
+   * persistence as optional. */
+  db?: Database | null;
   /** Defaults to true. Tests pass false to keep output clean. */
   logger?: boolean;
 }
@@ -37,13 +43,18 @@ export function buildServer(deps: GatewayDeps): FastifyInstance {
 
   // AiServiceError (POST /cycle failed or was unreachable) maps to 502 —
   // this gateway's fault lies with an upstream dependency, not the
-  // caller's request. Everything else falls back to a generic 500
-  // rather than leaking internal error details to the caller; the real
-  // error is still logged server-side.
+  // caller's request. DevMarketUnavailableError (blockchain/sui's
+  // dev-market mode) maps to 503 with its message, because the caller
+  // needs to know *why* orders are unavailable. Everything else falls
+  // back to a generic 500 rather than leaking internal error details to
+  // the caller; the real error is still logged server-side.
   app.setErrorHandler((error, request, reply) => {
     request.log.error(error);
     if (error instanceof AiServiceError) {
       return reply.status(502).send({ error: error.message });
+    }
+    if (error instanceof Error && error.name === 'DevMarketUnavailableError') {
+      return reply.status(503).send({ error: error.message });
     }
     return reply.status(500).send({ error: 'internal error' });
   });

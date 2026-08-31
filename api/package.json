@@ -10,12 +10,16 @@
     "dev": "tsx src/index.ts",
     "build": "tsc",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json"
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
+    "build:adapters": "npm --prefix ../blockchain/thetanuts run build && npm --prefix ../blockchain/sui run build",
+    "predev": "npm run build:adapters",
+    "prebuild": "npm run build:adapters"
   },
   "dependencies": {
     "@gasx/sui-adapter": "file:../blockchain/sui",
     "@gasx/thetanuts-adapter": "file:../blockchain/thetanuts",
-    "fastify": "^5.12.1"
+    "fastify": "^5.12.1",
+    "mysql2": "^3.24.2"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

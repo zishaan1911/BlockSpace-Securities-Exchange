@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkHedgeRisk, checkOrderRisk, type RiskPolicyConfig } from '../src/riskPolicy.js';
+import { checkHedgeConfidence, checkHedgeRisk, checkOrderRisk, type RiskPolicyConfig } from '../src/riskPolicy.js';
 
 const policy: RiskPolicyConfig = {
   maxOrderContracts: 100,
@@ -138,5 +138,27 @@ describe('checkHedgeRisk', () => {
   it('accepts notional exactly at MAX_HEDGE_NOTIONAL', () => {
     const result = checkHedgeRisk({ notional: 1000, modelConfidence: 0.9 }, policy);
     expect(result.accepted).toBe(true);
+  });
+});
+
+describe('checkHedgeConfidence', () => {
+  it('accepts confidence above the floor', () => {
+    expect(checkHedgeConfidence(0.9, policy).accepted).toBe(true);
+  });
+
+  it('accepts confidence exactly at the floor', () => {
+    expect(checkHedgeConfidence(0.7, policy).accepted).toBe(true);
+  });
+
+  it('rejects confidence below the floor', () => {
+    const result = checkHedgeConfidence(0.69, policy);
+    expect(result.accepted).toBe(false);
+    if (!result.accepted) expect(result.reason).toMatch(/MIN_MODEL_CONFIDENCE/);
+  });
+
+  it('ignores notional entirely (that is MAX_HEDGE_NOTIONAL job, checked later)', () => {
+    // A huge exposure with good confidence passes this gate — the
+    // premium cap is applied separately, against the quoted price.
+    expect(checkHedgeConfidence(0.95, policy).accepted).toBe(true);
   });
 });

@@ -25,31 +25,25 @@ types (`src/types.ts`), never the SDK's.
 ```bash
 cd blockchain/thetanuts
 npm install
-cp .env.example .env   # fill in GASX_THETANUTS_BASE_RPC_URL; hedge wallet key is optional (read-only without it)
+cp .env.example .env   # public Base RPC default works read-only; hedge wallet key optional
 npm run typecheck
-npm test
+npm test               # 23 tests, all pure — no network needed
+npm run build          # the API gateway links this package's dist/
 ```
 
-## What's actually verified in Claude's sandbox vs. what needs
-## verification on your machine
+## Verified status
 
-Same split this project already uses for Move contracts and the AI
-service's Ethereum/Sui integration (`GASX_PROJECT_HANDOFF.md` §1,
-`ai/README.md`), for the same reason: no network egress to Base RPC
-from that sandbox.
-
-- **Fully tested, real, in-sandbox**: `computeVolSignal` (13 tests) and
-  `pickBestCandidate`/`pricePerContractFromOfferAmount` (10 tests) —
-  all pure functions against synthetic fixtures. The whole module also
+- **Fully tested, real, on this machine**: `computeVolSignal` (13 tests)
+  and `pickBestCandidate`/`pricePerContractFromOfferAmount` (10 tests) —
+  all pure functions against synthetic fixtures. The whole module
   typechecks (`tsc --noEmit`) and builds (`tsc`) cleanly against the
   actually-installed `@thetanuts-finance/thetanuts-client@0.3.0`
   package — not just against its published docs (see below).
-- **NOT exercised against a live endpoint** — needs verification on
-  your machine before you trust it: `fetchVolSignal`, `createHedgeRequest`,
-  and `collectBestCandidate`, all of which call the real SDK against
-  Base mainnet. `createHedgeRequest` additionally needs a funded,
-  dedicated hedge wallet (ARCHITECTURE.md §8) to test at all, since it
-  submits a real on-chain transaction.
+- **NOT exercised against a live endpoint**: `fetchVolSignal`,
+  `createHedgeRequest`, and `collectBestCandidate`, all of which call the
+  real SDK against Base mainnet. `createHedgeRequest` additionally needs
+  a funded, dedicated hedge wallet (ARCHITECTURE.md §8) to test at all,
+  since it submits a real on-chain transaction.
 
 **A note on the SDK's docs vs. its actual shipped types**: this module
 is built against `@thetanuts-finance/thetanuts-client`'s installed

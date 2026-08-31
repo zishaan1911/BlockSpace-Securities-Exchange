@@ -1,0 +1,31 @@
+{
+  "name": "@gasx/frontend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "GASX web app (ARCHITECTURE.md §2): wallet, market screen, order form, positions, hedge view. Talks only to the API gateway.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mysten/dapp-kit-core": "^1.6.20",
+    "@mysten/dapp-kit-react": "^2.1.22",
+    "@mysten/sui": "^2.27.1",
+    "@tanstack/react-query": "^5.102.8",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "jsdom": "^25.0.0",
+    "typescript": "^5.7.0",
+    "vite": "^8.2.2",
+    "vitest": "^3.0.0"
+  }
+}

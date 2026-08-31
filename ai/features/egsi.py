@@ -21,6 +21,7 @@ output, no I/O, no floating global state.
 """
 from __future__ import annotations
 
+import math
 import statistics
 from dataclasses import dataclass
 
@@ -72,13 +73,28 @@ class EgsiNormalizationConfig:
     real historical data — tune these (or fit them from history) before
     relying on this for anything beyond the demo. See ai/README.md."""
 
-    # Base fee: 0 at floor, 1.0 at/above ceiling (gwei).
-    base_fee_floor_gwei: float = 5.0
-    base_fee_ceiling_gwei: float = 150.0
+    # Base fee, normalized on a LOG scale between floor and ceiling
+    # (gwei). Log rather than linear because gas prices are
+    # log-distributed: the interesting range spans ~0.1 gwei in a quiet
+    # post-Dencun market to 100+ gwei during real congestion, and a
+    # linear scale wastes almost its entire range on the top decade
+    # while flattening every ordinary reading to zero.
+    #
+    # Calibrated against live mainnet on 2026-08-31, where eth_gasPrice
+    # read 0.14 gwei — 35x below this module's original 5.0 floor, which
+    # pinned the component at 0.0 on every single cycle. Fees are near
+    # five-year lows with activity shifted to L2s; these bounds keep
+    # ordinary readings on-scale while leaving headroom for a spike.
+    base_fee_floor_gwei: float = 0.1
+    base_fee_ceiling_gwei: float = 100.0
 
-    # Mempool pressure: pending tx count, 0 at/below floor, 1.0 at/above ceiling.
-    mempool_floor: float = 500.0
-    mempool_ceiling: float = 20_000.0
+    # Mempool pressure: pending tx count, 0 at/below floor, 1.0 at/above
+    # ceiling. Calibrated against live mainnet on 2026-08-31, where
+    # txpool_status reported 79,361 pending — 4x above this module's
+    # original 20,000 ceiling, which pinned the component at 1.0 on
+    # every cycle and silently reduced EGSI to a five-input index.
+    mempool_floor: float = 20_000.0
+    mempool_ceiling: float = 200_000.0
 
     # Fee momentum: % change across the base_fee_history window,
     # normalized against this ceiling. Only upward momentum raises the
@@ -104,11 +120,22 @@ class EgsiNormalizationConfig:
 
 
 def _normalize_base_fee(base_fee_wei: int, config: EgsiNormalizationConfig) -> float:
-    base_fee_gwei = base_fee_wei / 1e9
-    span = config.base_fee_ceiling_gwei - config.base_fee_floor_gwei
-    if span <= 0:
+    """Log-scaled between floor and ceiling — see EgsiNormalizationConfig's
+    comment for why linear is the wrong shape here."""
+    if config.base_fee_floor_gwei <= 0:
+        raise ValueError("base_fee_floor_gwei must be positive (log scale)")
+    if config.base_fee_ceiling_gwei <= config.base_fee_floor_gwei:
         raise ValueError("base_fee_ceiling_gwei must exceed base_fee_floor_gwei")
-    return _clamp01((base_fee_gwei - config.base_fee_floor_gwei) / span)
+
+    base_fee_gwei = base_fee_wei / 1e9
+    # At or below the floor (including a zero/negative fee, which would
+    # be undefined in log space) reads as no stress.
+    if base_fee_gwei <= config.base_fee_floor_gwei:
+        return 0.0
+
+    log_span = math.log10(config.base_fee_ceiling_gwei) - math.log10(config.base_fee_floor_gwei)
+    position = math.log10(base_fee_gwei) - math.log10(config.base_fee_floor_gwei)
+    return _clamp01(position / log_span)
 
 
 def _normalize_utilization(gas_used: int, gas_limit: int) -> float:

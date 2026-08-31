@@ -6,6 +6,7 @@
 #   - blockchain/thetanuts    (TypeScript)
 #   - blockchain/sui          (TypeScript)
 #   - api                      (TypeScript)
+#   - frontend                 (TypeScript)
 #
 # Usage: ./scripts/test-all.sh
 # Requires: sui CLI on PATH, cmake + a C++17 compiler, either an
@@ -140,6 +141,27 @@ if command -v npm >/dev/null 2>&1; then
 else
   echo "!! npm not found on PATH — skipping API gateway tests"
   echo "   (see api/README.md for setup instructions)"
+  FAILED=1
+fi
+
+echo
+echo "==> frontend (TypeScript)"
+if command -v npm >/dev/null 2>&1; then
+  if [ ! -d "$REPO_ROOT/frontend/node_modules" ]; then
+    echo "-- node_modules missing, running npm install first"
+    (cd "$REPO_ROOT/frontend" && npm install)
+  fi
+  (cd "$REPO_ROOT/frontend" && npm run typecheck && npm test)
+  FRONTEND_STATUS=$?
+  if [ "$FRONTEND_STATUS" -ne 0 ]; then
+    echo "!! Frontend tests FAILED"
+    FAILED=1
+  else
+    echo "-- Frontend tests passed"
+  fi
+else
+  echo "!! npm not found on PATH — skipping frontend tests"
+  echo "   (see frontend/README.md for setup instructions)"
   FAILED=1
 fi
 

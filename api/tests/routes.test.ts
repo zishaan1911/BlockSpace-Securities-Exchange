@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { buildServer, type GatewayDeps } from '../src/server.js';
+import type { ExposureConfig } from '../src/exposure.js';
 import type { RiskPolicyConfig } from '../src/riskPolicy.js';
 import { FakeAiClient, FakeChainAdapter, FakeHedgeProvider, makeEgsiSnapshot, makeMarketState } from './fakes.js';
 
@@ -12,6 +13,13 @@ const riskPolicy: RiskPolicyConfig = {
   maxHedgeNotional: 1000,
 };
 
+const exposureConfig: ExposureConfig = {
+  ethBeta: 0.5,
+  hedgeThresholdNotional: 5000,
+  hedgeContracts: 1,
+  offerDeadlineMinutes: 10,
+};
+
 let app: FastifyInstance;
 let chainAdapter: FakeChainAdapter;
 let hedgeProvider: FakeHedgeProvider;
@@ -21,7 +29,7 @@ beforeEach(() => {
   chainAdapter = new FakeChainAdapter();
   hedgeProvider = new FakeHedgeProvider();
   aiClient = new FakeAiClient();
-  const deps: GatewayDeps = { chainAdapter, hedgeProvider, aiClient, riskPolicy, logger: false };
+  const deps: GatewayDeps = { chainAdapter, hedgeProvider, aiClient, riskPolicy, exposureConfig, logger: false };
   app = buildServer(deps);
 });
 

@@ -14,4 +14,5 @@ export type {
   PreparedTransaction,
 } from './types.js';
 export { loadConfigFromEnv, type SuiAdapterConfig } from './config.js';
-export { SuiChainAdapter } from './chainAdapter.js';
+export { DevMarketUnavailableError, SuiChainAdapter } from './chainAdapter.js';
+export { fetchDevMarketState } from './devMarket.js';

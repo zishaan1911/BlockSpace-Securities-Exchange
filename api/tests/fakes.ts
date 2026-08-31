@@ -87,19 +87,46 @@ export function makeVolSignal(overrides: Partial<VolSignal> = {}): VolSignal {
 export class FakeHedgeProvider implements HedgeProvider {
   volSignal: VolSignal = makeVolSignal();
   getVolSignalError: Error | null = null;
+  requestHedgeQuoteError: Error | null = null;
+  /** Null models the realistic "RFQ submitted, no MM has responded
+   * yet" case, which the hedge flow has to handle explicitly. */
+  bestCandidate: HedgeCandidate | null = makeHedgeCandidate();
+  lastRequestHedgeQuoteParams: HedgeRequestParams | null = null;
 
   async getVolSignal(): Promise<VolSignal> {
     if (this.getVolSignalError) throw this.getVolSignalError;
     return this.volSignal;
   }
 
-  async requestHedgeQuote(_params: HedgeRequestParams): Promise<HedgeRequest> {
-    throw new Error('not implemented in FakeHedgeProvider');
+  async requestHedgeQuote(params: HedgeRequestParams): Promise<HedgeRequest> {
+    if (this.requestHedgeQuoteError) throw this.requestHedgeQuoteError;
+    this.lastRequestHedgeQuoteParams = params;
+    return {
+      quotationId: '42',
+      underlying: params.underlying,
+      optionType: params.optionType,
+      strike: params.strike,
+      expiry: params.expiry,
+      numContracts: params.numContracts,
+      direction: params.direction,
+      offerDeadlineUnixSeconds: 1_700_000_600,
+      transactionHash: '0xrfqtx',
+    };
   }
 
   async getBestCandidate(_request: HedgeRequest): Promise<HedgeCandidate | null> {
-    return null;
+    return this.bestCandidate;
   }
+}
+
+export function makeHedgeCandidate(overrides: Partial<HedgeCandidate> = {}): HedgeCandidate {
+  return {
+    quotationId: '42',
+    offeror: '0xmm',
+    pricePerContract: 50,
+    raw: { offerAmount: '50000000', nonce: '1' },
+    ...overrides,
+  };
 }
 
 export class FakeAiClient implements AiClient {
@@ -115,6 +142,13 @@ export class FakeAiClient implements AiClient {
 
   async getForecast(): Promise<ForecastDto | null> {
     return this.forecast;
+  }
+
+  restoredScores: number[] | null = null;
+
+  async restoreHistory(scores: number[]): Promise<number | null> {
+    this.restoredScores = scores;
+    return scores.length;
   }
 
   async runCycle(input?: RunCycleInput): Promise<EgsiSnapshotDto> {

@@ -21,6 +21,11 @@ export interface MarketState {
   /** Only meaningful when settled is true. */
   settlementPrice: number | null;
   oracle: OracleState;
+  /** True when this is the synthetic dev market (devMarket.ts), not a
+   * read from chain — the UI should label it as such. */
+  devMode?: boolean;
+  /** The Sui network the (real) market lives on. */
+  network?: string;
 }
 
 export interface OracleState {
