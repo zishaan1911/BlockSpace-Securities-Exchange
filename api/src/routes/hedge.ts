@@ -64,6 +64,30 @@ export function validateExposureBody(body: ExposureBody): ValidatedExposure | st
   return { netContracts: body.netContracts, egsiLevel: body.egsiLevel };
 }
 
+/** Shared shape for the audit row, so every exit path from /evaluate
+ * records the same fields rather than each building its own. */
+function auditRow(
+  base: { netContracts: number; egsiLevel: number },
+  exposure: ReturnType<typeof assessExposure>,
+) {
+  return {
+    netContracts: base.netContracts,
+    egsiLevel: base.egsiLevel,
+    egsiNotional: exposure.egsiNotional,
+    ethBetaNotional: exposure.ethBetaNotional,
+    breached: exposure.breached,
+    suggestedOptionType: exposure.suggestedOptionType,
+    modelConfidence: null as number | null,
+    quotationId: null as string | null,
+    rfqTxHash: null as string | null,
+    offeror: null as string | null,
+    pricePerContract: null as number | null,
+    quotedNotional: null as number | null,
+    approved: null as boolean | null,
+    reason: null as string | null,
+  };
+}
+
 export function registerHedgeRoutes(app: FastifyInstance, deps: GatewayDeps): void {
   app.post('/api/v1/hedge/sync-signal', async () => {
     const signal = await deps.hedgeProvider.getVolSignal('ETH');
@@ -114,7 +138,9 @@ export function registerHedgeRoutes(app: FastifyInstance, deps: GatewayDeps): vo
     );
 
     if (!exposure.breached || !exposure.suggestedOptionType) {
-      return { exposure, hedged: false, reason: 'ETH-beta exposure is within threshold; no hedge warranted' };
+      const reason = 'ETH-beta exposure is within threshold; no hedge warranted';
+      await deps.db?.recordHedgeEvaluation({ ...auditRow(validated, exposure), reason });
+      return { exposure, hedged: false, reason };
     }
 
     // §8's MIN_MODEL_CONFIDENCE gates the AI-driven hedge path, so the
@@ -138,6 +164,12 @@ export function registerHedgeRoutes(app: FastifyInstance, deps: GatewayDeps): vo
     // checkHedgeConfidence's doc comment.
     const preCheck = checkHedgeConfidence(forecast.confidence, deps.riskPolicy);
     if (!preCheck.accepted) {
+      await deps.db?.recordHedgeEvaluation({
+        ...auditRow(validated, exposure),
+        modelConfidence: forecast.confidence,
+        approved: false,
+        reason: preCheck.reason,
+      });
       return {
         exposure,
         forecast,
@@ -165,6 +197,13 @@ export function registerHedgeRoutes(app: FastifyInstance, deps: GatewayDeps): vo
 
     const candidate = await deps.hedgeProvider.getBestCandidate(hedgeRequest);
     if (!candidate) {
+      await deps.db?.recordHedgeEvaluation({
+        ...auditRow(validated, exposure),
+        modelConfidence: forecast.confidence,
+        quotationId: hedgeRequest.quotationId,
+        rfqTxHash: hedgeRequest.transactionHash,
+        reason: 'no market maker offers received',
+      });
       return {
         exposure,
         forecast,
@@ -183,6 +222,18 @@ export function registerHedgeRoutes(app: FastifyInstance, deps: GatewayDeps): vo
       { notional: quotedNotional, modelConfidence: forecast.confidence },
       deps.riskPolicy,
     );
+
+    await deps.db?.recordHedgeEvaluation({
+      ...auditRow(validated, exposure),
+      modelConfidence: forecast.confidence,
+      quotationId: hedgeRequest.quotationId,
+      rfqTxHash: hedgeRequest.transactionHash,
+      offeror: candidate.offeror,
+      pricePerContract: candidate.pricePerContract,
+      quotedNotional,
+      approved: finalCheck.accepted,
+      reason: finalCheck.accepted ? null : finalCheck.reason,
+    });
 
     return {
       exposure,

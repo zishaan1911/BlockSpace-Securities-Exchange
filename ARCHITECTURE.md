@@ -12,7 +12,7 @@ Constraints: **must use Sui + Thetanuts; frontend is a web app. Judged bar (MUBA
 flowchart TB
     FE[React Web App] --> API[TypeScript API Gateway]
     API --> AI[Python AI Service]
-    API --> DB[(PostgreSQL)]
+    API --> DB[(MySQL)]
     API --> SUIAD[Sui Adapter]
     SUIAD --> MOVE[Sui Move Contracts]
     MOVE --> SUI[Sui Network]
@@ -36,7 +36,7 @@ flowchart TB
 | AI service | Python (FastAPI) | Ingest Ethereum data, compute EGSI, forecast, publish oracle |
 | Sui contracts | Move | Order book, margin, positions, oracle state, settlement |
 | Thetanuts adapter | TypeScript | Market data, MM pricing, RFQ, autonomous hedge execution |
-| Storage | PostgreSQL | Durable state; live EGSI/orderbook cached in API memory |
+| Storage | MySQL | Durable state; live EGSI/orderbook cached in API memory |
 
 Backend service boundaries are invisible to the frontend: the UI only talks to stable domain APIs (`/api/v1/...`, `/ws/...`).
 
@@ -190,7 +190,7 @@ gasx/
 ├── api/              TypeScript gateway + Sui/Thetanuts adapters
 ├── ai/               Python ingestion, EGSI, model, inference
 ├── contracts/gasx/   Move packages
-├── database/         PostgreSQL migrations
+├── database/         MySQL migrations
 ├── scripts/          setup.ps1 / setup.sh / teardown.ps1 / teardown.sh
 ├── .vscode/          recommended extensions
 ```

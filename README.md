@@ -26,7 +26,7 @@ GASX makes Ethereum congestion tradeable. It tracks one index — the **Ethereum
 
 1. The user sees the current EGSI and the AI forecast (e.g., EGSI = 450, forecast: 570 in 1 hour) and buys 5 contracts.
 2. The order goes to the Sui contract; USDC is locked as a position.
-3. The AI (on our own server, not on-chain) keeps computing EGSI and publishes it to the Sui oracle. The frontend reads history from PostgreSQL.
+3. The AI (on our own server, not on-chain) keeps computing EGSI and publishes it to the Sui oracle. The frontend reads history through the API gateway, which is the only service that touches the database.
 4. After 1 hour the contract settles against the final EGSI. The winner collects USDC; the loser's USDC goes to the other side of the bet — another user, or GASX's own account if no one else exists.
 
 **The hedge (why Thetanuts).** The oracle is ours, so GASX is not fully decentralized — but Thetanuts never decides outcomes. It is where GASX buys insurance: when gas spikes, everyone bets the same direction, and GASX's own account ends up holding the losing side. (No one can fail to pay — USDC is locked upfront — so the risk is GASX's book, not bad debts.) So the AI agent hedges with ETH options on Thetanuts on Base mainnet.
@@ -67,7 +67,7 @@ api/          TypeScript gateway: REST, prepares Sui transactions, Thetanuts ada
 ai/           Python: ingestion → EGSI → forecast → oracle updates to Sui
 contracts/    Move: market, order, margin, position, oracle, settlement, events
 blockchain/   Sui adapter (reads + tx-prep) and Thetanuts adapter (market data + RFQ)
-database/     PostgreSQL
+database/     MySQL schema
 scripts/      test-all.sh (every test suite, all stacks)
 
 docs: README.md · GOALS.md · ARCHITECTURE.md · GLOSSARY.md · setup.md

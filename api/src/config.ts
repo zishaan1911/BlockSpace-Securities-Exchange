@@ -12,6 +12,9 @@ export interface GatewayConfig {
   /** Base URL of the Python AI service (ai/main.py's FastAPI app), e.g.
    * http://localhost:8000. */
   aiServiceUrl: string;
+  /** MySQL connection URL. Undefined disables persistence entirely —
+   * the gateway then runs without durable state (see src/db.ts). */
+  databaseUrl: string | undefined;
   sui: SuiAdapterConfig;
   thetanuts: ThetanutsAdapterConfig;
   riskPolicy: RiskPolicyConfig;
@@ -50,6 +53,7 @@ export function loadGatewayConfig(): GatewayConfig {
   return {
     port: readEnvInt('GASX_API_PORT', 3000),
     aiServiceUrl: readEnv('GASX_API_AI_SERVICE_URL') || 'http://localhost:8000',
+    databaseUrl: readEnv('GASX_API_DATABASE_URL') || undefined,
     sui: loadSuiConfig(),
     thetanuts: loadThetanutsConfig(),
     riskPolicy: {

@@ -20,6 +20,7 @@ and talks to `ai/`'s FastAPI service over HTTP.
 | `config` | environment-driven settings — port, AI service URL, risk policy constants, plus both adapters' own configs |
 | `riskPolicy` | ARCHITECTURE.md §8's Hard Risk Policy — `checkOrderRisk` (manual orders), `checkHedgeConfidence` (pre-RFQ gate), `checkHedgeRisk` (full hedge check) |
 | `exposure` | ETH-beta exposure — §10's "exposure breached threshold" trigger |
+| `db` | MySQL durable state; optional, best-effort, never fails a request |
 | `aiClient` | thin HTTP client for `ai/main.py` — `GET /egsi/current`, `GET /forecast`, `POST /cycle` |
 | `server` | Fastify app factory, dependency-injected (`GatewayDeps`) so tests never touch a live network |
 | `routes/market` | `GET /api/v1/market` |
@@ -115,10 +116,14 @@ the same gateway reads the real market and order preparation turns on.
   forecast" only partially — the orderbook piece needs a real indexer,
   a separate, not-yet-built piece of infrastructure (`indexer/` is still
   an empty scaffold in the repo root).
-- **No PostgreSQL.** ARCHITECTURE.md §2 lists Postgres as part of the
-  API gateway's stack ("Storage"); this gateway is currently entirely
-  stateless (every request re-reads Sui/the AI service fresh). Fine for
-  a demo's request volume; add caching/persistence if that changes.
+- **Persistence is optional and partial.** The gateway writes durable
+  state to MySQL when `GASX_API_DATABASE_URL` is set, and runs
+  statelessly when it is not (see `database/README.md`). Four tables are
+  live — EGSI snapshots, forecasts, hedge evaluations, prepared orders —
+  and two (`trade_event`, `position_snapshot`) have schema but no writer,
+  because they need the indexer that does not exist yet. Nothing is read
+  back for caching: every request still re-reads Sui and the AI service
+  fresh.
 - **The hedge flow stops before execution.** `POST /api/v1/hedge/evaluate`
   runs the whole of ARCHITECTURE.md §10 — assess ETH-beta exposure, pull
   MM pricing, submit an RFQ, collect the best candidate, apply §8's hard

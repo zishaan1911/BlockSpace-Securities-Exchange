@@ -9,6 +9,7 @@ import { SuiChainAdapter } from '@gasx/sui-adapter';
 import { ThetanutsHedgeProvider } from '@gasx/thetanuts-adapter';
 import { HttpAiClient } from './aiClient.js';
 import { loadGatewayConfig } from './config.js';
+import { createDatabase } from './db.js';
 import { buildServer } from './server.js';
 
 // Load the gateway's own .env plus both chain adapters' .env files
@@ -25,6 +26,7 @@ for (const path of ['.env', '../blockchain/sui/.env', '../blockchain/thetanuts/.
 const config = loadGatewayConfig();
 
 const app = buildServer({
+  db: createDatabase(config.databaseUrl, { error: (m) => console.error(m) }),
   chainAdapter: new SuiChainAdapter(config.sui),
   hedgeProvider: new ThetanutsHedgeProvider(config.thetanuts),
   aiClient: new HttpAiClient(config.aiServiceUrl),

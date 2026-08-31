@@ -9,6 +9,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import type { ChainAdapter } from '@gasx/sui-adapter';
 import type { HedgeProvider } from '@gasx/thetanuts-adapter';
 import type { AiClient } from './aiClient.js';
+import type { Database } from './db.js';
 import { AiServiceError } from './aiClient.js';
 import type { ExposureConfig } from './exposure.js';
 import type { RiskPolicyConfig } from './riskPolicy.js';
@@ -23,6 +24,9 @@ export interface GatewayDeps {
   aiClient: AiClient;
   riskPolicy: RiskPolicyConfig;
   exposureConfig: ExposureConfig;
+  /** Null when no database is configured; every call site treats
+   * persistence as optional. */
+  db?: Database | null;
   /** Defaults to true. Tests pass false to keep output clean. */
   logger?: boolean;
 }

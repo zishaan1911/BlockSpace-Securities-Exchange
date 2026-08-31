@@ -32,7 +32,7 @@ ai/           Python EGSI computation, forecasting, oracle publisher
 api/          TypeScript API gateway (Fastify) — market, orders, account, hedge routes + risk policy
 frontend/     React + TypeScript trading UI (Vite, Sui dApp Kit)
 indexer/      Chain event indexing (empty scaffold)
-database/     Schema migrations (empty scaffold)
+database/     MySQL schema migrations
 infra/        Docker, monitoring (empty scaffold)
 ```
 
