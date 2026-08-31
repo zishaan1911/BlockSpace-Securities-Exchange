@@ -114,10 +114,19 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 venv/bin/pytest
   `thetanuts_skew` too (§4: "Thetanuts IV/skew signals"), defaulting to
   `0.0` via the same missing-feature handling every other feature uses.
 - **Normalization reference points
-  (`features/egsi.EgsiNormalizationConfig`) are rough, undocumented-as-
-  calibrated defaults**, not fit against real historical data — there
-  isn't any yet for a brand-new index. Tune or refit these once real
-  history accumulates.
+  (`features/egsi.EgsiNormalizationConfig`) were recalibrated against
+  live mainnet on 2026-08-31**, after the original guessed defaults
+  turned out to be badly wrong: the base-fee floor sat 35x above the
+  real gas price (0.14 gwei), pinning that component at 0.0 on every
+  cycle, and the mempool ceiling sat 4x below the real pending count
+  (79,361), pinning that one at 1.0. Two of six inputs were dead and
+  the failure was silent — EGSI was effectively tracking block
+  utilization alone. Base fee is now normalized on a **log** scale,
+  because gas prices are log-distributed and a linear scale wastes its
+  whole range on the top decade. `tests/test_egsi_features.py` has
+  regression guards against both pinning failures. These bounds are
+  still fitted to a single observation, not a distribution — worth
+  revisiting once `egsi_snapshot` has accumulated real history.
 - **The forecaster never raises to its caller.** `inference.Forecaster`
   falls back to `FALLBACK_FORECAST` (a conservative, low-confidence,
   mid-range forecast) whenever no model is loaded, the loaded model

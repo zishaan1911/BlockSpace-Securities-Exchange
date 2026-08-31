@@ -31,10 +31,10 @@ def test_score_is_within_0_1000_bounds():
 
 def test_minimal_stress_inputs_give_a_low_score():
     metrics = make_metrics(
-        base_fee_wei=5_000_000_000,  # at the floor
+        base_fee_wei=100_000_000,  # 0.1 gwei — at the log-scale floor
         gas_used=0,
         pending_tx_count=0,
-        base_fee_history_wei=[5_000_000_000] * 10,  # flat, no momentum/volatility
+        base_fee_history_wei=[100_000_000] * 10,  # flat, no momentum/volatility
         dex_tx_count=0,
     )
     snapshot = compute_egsi(metrics)
@@ -46,7 +46,7 @@ def test_maximal_stress_inputs_give_a_high_score():
         base_fee_wei=200_000_000_000,  # above the ceiling
         gas_used=30_000_000,
         gas_limit=30_000_000,
-        pending_tx_count=30_000,
+        pending_tx_count=300_000,  # above the 200k ceiling
         base_fee_history_wei=[10_000_000_000, 40_000_000_000],  # sharp rise
         dex_tx_count=90,
         block_tx_count=100,
@@ -210,3 +210,68 @@ def test_thetanuts_iv_weight_of_zero_excludes_it_even_when_supplied():
     with_zero_weight = compute_egsi(metrics, weights=weights, thetanuts_iv=1.5)
     without_signal = compute_egsi(metrics, weights=weights)
     assert with_zero_weight.score == without_signal.score
+
+
+# ---------------------------------------------------------------------------
+# Calibration regression guards.
+#
+# These exist because the original defaults were guesses that turned out
+# to be badly wrong against live mainnet (2026-08-31): the base fee floor
+# sat 35x above the real gas price, pinning that component at 0.0 forever,
+# and the mempool ceiling sat 4x below the real pending count, pinning
+# that one at 1.0 forever. Two of six inputs were dead and the failure was
+# silent. These check the components actually respond in the range the
+# real network occupies.
+# ---------------------------------------------------------------------------
+
+
+def test_base_fee_is_log_scaled_not_linear():
+    # On a linear scale the midpoint of [0.1, 100] gwei would be ~50 gwei.
+    # On a log scale it is ~3.16 gwei (10^0.5). Assert the log behaviour.
+    snapshot = compute_egsi(make_metrics(base_fee_wei=3_162_000_000))  # ~3.16 gwei
+    assert snapshot.components.base_fee == pytest.approx(0.5, abs=0.01)
+
+
+def test_realistic_low_gas_price_is_on_scale_not_pinned_to_zero():
+    # 0.14 gwei — the actual observed mainnet gas price that exposed the
+    # original miscalibration. Must be > 0, or the component is dead.
+    snapshot = compute_egsi(make_metrics(base_fee_wei=140_000_000))
+    assert snapshot.components.base_fee > 0.0
+    assert snapshot.components.base_fee < 0.2
+
+
+def test_base_fee_still_responds_across_the_realistic_low_range():
+    # Two ordinary post-Dencun readings must be distinguishable.
+    quiet = compute_egsi(make_metrics(base_fee_wei=140_000_000))  # 0.14 gwei
+    busier = compute_egsi(make_metrics(base_fee_wei=2_000_000_000))  # 2 gwei
+    assert busier.components.base_fee > quiet.components.base_fee
+
+
+def test_congestion_spike_still_reaches_the_top_of_the_scale():
+    snapshot = compute_egsi(make_metrics(base_fee_wei=100_000_000_000))  # 100 gwei
+    assert snapshot.components.base_fee == pytest.approx(1.0, abs=0.01)
+
+
+def test_zero_base_fee_does_not_break_the_log_scale():
+    # log10(0) is undefined; must read as no stress rather than raising.
+    snapshot = compute_egsi(make_metrics(base_fee_wei=0))
+    assert snapshot.components.base_fee == 0.0
+
+
+def test_realistic_mempool_is_on_scale_not_pinned_to_one():
+    # 79,361 pending — the actual observed mainnet value that exposed the
+    # original miscalibration.
+    snapshot = compute_egsi(make_metrics(pending_tx_count=79_361))
+    assert 0.0 < snapshot.components.mempool_pressure < 1.0
+
+
+def test_mempool_still_responds_across_the_realistic_range():
+    normal = compute_egsi(make_metrics(pending_tx_count=79_361))
+    congested = compute_egsi(make_metrics(pending_tx_count=150_000))
+    assert congested.components.mempool_pressure > normal.components.mempool_pressure
+
+
+def test_base_fee_floor_must_be_positive_for_log_scale():
+    bad = EgsiNormalizationConfig(base_fee_floor_gwei=0.0)
+    with pytest.raises(ValueError):
+        compute_egsi(make_metrics(), config=bad)

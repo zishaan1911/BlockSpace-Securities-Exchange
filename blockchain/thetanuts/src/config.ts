@@ -31,12 +31,14 @@ function readEnv(name: string): string | undefined {
  * fast at construction is better than a confusing failure deep inside an
  * SDK call. */
 export function loadConfigFromEnv(): ThetanutsAdapterConfig {
-  const baseRpcUrl = readEnv('GASX_THETANUTS_BASE_RPC_URL');
-  if (!baseRpcUrl) {
-    throw new Error(
-      'GASX_THETANUTS_BASE_RPC_URL is required (see blockchain/thetanuts/.env.example)',
-    );
-  }
+  // Defaults to Base's public RPC rather than throwing. Requiring config
+  // for a keyless, read-only, public endpoint just to boot the stack is
+  // friction with no safety benefit — and it blocked `npm run dev`
+  // outright, which the Sui adapter's own default already avoids. The
+  // hedge wallet key below is the one that genuinely must stay unset
+  // until someone means it: without it no RFQ can be submitted and no
+  // money can move.
+  const baseRpcUrl = readEnv('GASX_THETANUTS_BASE_RPC_URL') || 'https://mainnet.base.org';
   return {
     baseRpcUrl,
     hedgeWalletPrivateKey: readEnv('GASX_THETANUTS_HEDGE_WALLET_PRIVATE_KEY') || undefined,
