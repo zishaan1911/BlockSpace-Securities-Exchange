@@ -1,0 +1,121 @@
+name: Test suite
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typescript:
+    name: TypeScript tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            blockchain/thetanuts/package-lock.json
+            blockchain/sui/package-lock.json
+            api/package-lock.json
+
+      # The API imports the built adapter packages, so build those first.
+      - name: Test Thetanuts adapter
+        working-directory: blockchain/thetanuts
+        run: |
+          npm ci
+          npm run typecheck
+          npm run build
+          npm test
+
+      - name: Test Sui adapter
+        working-directory: blockchain/sui
+        run: |
+          npm ci
+          npm run typecheck
+          npm run build
+          npm test
+
+      - name: Test API
+        working-directory: api
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+
+  cpp:
+    name: C++ tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S engine -B engine/build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build engine/build --parallel
+
+      - name: Run tests
+        run: ctest --test-dir engine/build --output-on-failure
+
+  python:
+    name: Python tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: ai/requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r ai/requirements.txt
+
+      - name: Run tests
+        working-directory: ai
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: python -m pytest
+
+  move:
+    name: Move tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Sui toolchain manager
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/MystenLabs/suiup/main/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Install Sui CLI
+        run: suiup install sui@testnet --yes
+
+      - name: Show Sui version
+        run: sui --version
+
+      - name: Run Move tests
+        working-directory: contracts/gasx
+        run: sui move test
