@@ -4,6 +4,7 @@
 |---|---|
 | `bootstrap.sh` | installs every dependency and builds the project on a fresh machine |
 | `test-all.sh` | runs every test suite: Move, C++, Python, and the three TypeScript packages |
+| `deploy-sui.sh` | publishes contracts/gasx, creates the market + oracle, and turns dev-market mode off |
 | `db-export.sh` | dumps the GASX database for transfer to another machine |
 | `db-import.sh` | restores a dump, replacing or merging with what is already there |
 
@@ -42,6 +43,35 @@ The Sui CLI is **not** installed automatically — it is a large release
 binary and only needed for the Move contracts. The script prints
 instructions, including which stray binaries to delete from the tarball
 so they do not pollute `git status`.
+
+## Leaving dev-market mode
+
+The Sui adapter serves a synthetic market until the contracts are
+actually deployed — that is what `GASX_SUI_DEV_MARKET` controls. Setting
+the flag alone does nothing useful: there is no package id, no `Market`
+object and no `OracleState` to read, so every request would fail. The
+switch is a *consequence* of deploying, not a substitute for it.
+
+```bash
+sui client switch --env testnet
+sui client faucet                    # testnet gas is free
+./scripts/deploy-sui.sh --dry-run    # see what it would do
+./scripts/deploy-sui.sh
+```
+
+The script publishes the package, creates the oracle (authorising your
+active address as its publisher) and the EGSI-1H market, then writes the
+resulting ids into `blockchain/sui/.env` and `ai/.env` and sets
+`GASX_SUI_DEV_MARKET=false`. Restart the gateway afterwards.
+
+It refuses to run against mainnet without `--allow-mainnet`, since
+publishing there costs real SUI, and it checks for gas up front rather
+than failing halfway through.
+
+The `AdminCap` minted on publish is deliberately **not** written to any
+`.env`. Nothing in the running stack needs it — it gates pause and
+settlement from the CLI — and it should not sit in a file the services
+read.
 
 ## Moving collected EGSI history between machines
 
