@@ -150,3 +150,25 @@ def test_build_features_rejects_history_missing_required_columns():
 
     with _pytest.raises(ValueError, match="missing required columns"):
         _build_features(pd.DataFrame({"score": [1, 2, 3]}), horizon=1)
+
+
+def test_build_features_accepts_the_gateways_camelcase_column_names():
+    """The gateway returns camelCase (db.ts maps SQL rows into
+    TypeScript-style names) while a CSV from MySQL is snake_case. Both
+    must work — this mismatch broke the first real training run."""
+    import pandas as pd
+    from inference.train import _build_features
+
+    raw = pd.DataFrame({
+        "score": list(range(100, 160)),
+        "baseFee": [0.05] * 60,
+        "utilization": [0.5] * 60,
+        "mempoolPressure": [0.33] * 60,
+        "gasVolatility": [0.2] * 60,
+        "thetanutsIv": [None] * 60,
+    })
+    built = _build_features(raw, horizon=5)
+    assert len(built) == 55
+    assert built["base_fee"].iloc[0] == 0.05
+    assert built["mempool_pressure"].iloc[0] == 0.33
+    assert built["thetanuts_iv"].iloc[0] == 0.0
