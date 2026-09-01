@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 from config import settings
 from features.egsi import EgsiNormalizationConfig, EgsiWeights, compute_egsi
 from features.history import EgsiHistory
+from inference.baseline_forecaster import BaselineForecaster
 from inference.forecaster import Forecaster, load_trained_model
 from ingestion.ethereum import EthereumIngestionClient
 from schemas import CycleRequest, EgsiSnapshot, ForecastOutput
@@ -61,6 +62,12 @@ _history = EgsiHistory(max_len=settings.egsi_history_max_len)
 # history.
 _MODELS_DIR = Path(__file__).resolve().parent / "models"
 _forecaster = Forecaster(load_trained_model(_MODELS_DIR))
+# Served whenever no learned model qualifies. ARCHITECTURE.md §4: "must
+# beat naive baselines out-of-sample; otherwise ship the baseline". On
+# real data the baseline is measurably MORE accurate than the learned
+# model (MAE 46.5 vs 49.7), so this is the correct answer rather than a
+# degraded one.
+_baseline_forecaster = BaselineForecaster()
 _latest_snapshot: EgsiSnapshot | None = None
 # Thetanuts skew isn't part of EGSI's own formula (ARCHITECTURE.md §3
 # only lists IV), but it is a forecast feature (§4) — tracked separately
@@ -89,6 +96,17 @@ def get_forecast() -> ForecastOutput:
     features = _history.features()
     if features is None:
         raise HTTPException(status_code=503, detail="no EGSI history yet — call POST /cycle first")
+
+    # No qualifying learned model: serve the statistical baseline, which
+    # measurement shows is the better predictor anyway.
+    if not _forecaster.is_model_loaded:
+        baseline = _baseline_forecaster.predict(_history.scores)
+        if baseline is None:
+            raise HTTPException(
+                status_code=503,
+                detail=f"need at least {_baseline_forecaster.__class__.__name__}'s minimum history",
+            )
+        return baseline
 
     last_score = _history.scores[-1]
     components = _latest_snapshot.components if _latest_snapshot else None

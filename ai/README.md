@@ -194,6 +194,27 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 venv/bin/pytest
   deliberately separate endpoints — a publish should never happen as a
   side effect of a read/compute loop.
 
+## What /forecast actually serves
+
+Three possible sources, in priority order:
+
+1. A learned model, **if** it beat its naive baselines out-of-sample.
+2. `inference/baseline_forecaster.py` — the recent mean, with confidence
+   from measured dispersion and `p_tail_500` from observed frequency.
+3. `FALLBACK_FORECAST`, a hard-coded constant, only when there is not
+   even enough history for (2).
+
+On real data (2,704 readings) the learned model has **not** qualified:
+MAE 49.7 against the constant mean's 46.5, and negative skill at every
+horizon. So the baseline is what gets served — and per ARCHITECTURE.md
+§4 ("otherwise ship the baseline") that is the specified behaviour, not
+a degraded mode. It is also simply the more accurate predictor here.
+
+The baseline replaced a hard-coded 500.0 / 0.3-confidence constant that
+never moved. It now tracks the series, and its confidence comes from
+measured dispersion rather than the quantile band that evaluation showed
+to be mis-calibrated (56-58% coverage against 80% expected).
+
 ## Evaluating the model honestly
 
 `beats_baseline` is a boolean and a low bar. Run

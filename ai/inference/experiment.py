@@ -113,6 +113,11 @@ def run_direction(df: pd.DataFrame, columns: list[str], horizon: int) -> dict:
         "reversion_accuracy": reversion_accuracy,
         "majority_accuracy": majority_accuracy,
         "edge_over_reversion": (accuracy - reversion_accuracy) * 100,
+        "edge_over_majority": (accuracy - majority_accuracy) * 100,
+        # A directional model has to beat BOTH free baselines. Beating
+        # mean reversion while losing to "always guess the same way" is
+        # not an edge, and reporting it as one was a real bug here.
+        "beats_both": accuracy > reversion_accuracy and accuracy > majority_accuracy,
         "rows": len(usable),
     }
 
@@ -155,7 +160,8 @@ def main(gateway_url: str) -> None:
                 f"  {horizon:>8}  {result['accuracy'] * 100:>7.1f}%  "
                 f"{result['reversion_accuracy'] * 100:>9.1f}%  "
                 f"{result['majority_accuracy'] * 100:>8.1f}%  "
-                f"{result['edge_over_reversion']:>7.1f}pp"
+                f"{result['edge_over_reversion']:>7.1f}pp  "
+                f"{'yes' if result['beats_both'] else 'no':>11}"
             )
 
     print("\n" + "=" * 72)
@@ -174,19 +180,21 @@ def main(gateway_url: str) -> None:
         print("         asking for its average; that is a property of the data, not")
         print("         a shortcoming of the model. More capacity will not fix it.")
 
-    best_dir = max((r for r in direction_results if "edge_over_reversion" in r),
-                   key=lambda r: r["edge_over_reversion"], default=None)
-    if best_dir and best_dir["edge_over_reversion"] > 3:
+    # Rank only among models that beat both baselines. A large edge over
+    # reversion means nothing if the majority class beats the model.
+    qualified = [r for r in direction_results if r.get("beats_both")]
+    best_dir = max(qualified, key=lambda r: r["edge_over_reversion"], default=None)
+    if best_dir and best_dir["edge_over_reversion"] > 1:
         print(f"\n  Direction: real edge at horizon {best_dir['horizon']} — "
               f"{best_dir['accuracy'] * 100:.1f}% vs {best_dir['reversion_accuracy'] * 100:.1f}% "
               f"for mean reversion alone.")
         print("             This is worth serving, and worth saying plainly that it")
         print("             predicts direction rather than level.")
     else:
-        edge = best_dir["edge_over_reversion"] if best_dir else 0.0
-        print(f"\n  Direction: no real edge. Best is {edge:.1f}pp over mean reversion.")
-        print("             The 72-77% directional accuracy reported earlier was")
-        print("             mean reversion, available for free without a model.")
+        print("\n  Direction: no horizon beats BOTH free baselines. Any apparent")
+        print("             edge over mean reversion is cancelled by the majority")
+        print("             class -- at long horizons the series moves mostly one")
+        print("             way, so 'always guess down' is very hard to beat.")
     print()
 
 

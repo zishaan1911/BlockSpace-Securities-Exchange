@@ -25,6 +25,12 @@ export function ForecastPanel({ forecast }: { forecast: Forecast | null }) {
     );
   }
 
+  // Three distinct states, and they deserve different words. A learned
+  // model that beat its baselines is one thing; the statistical
+  // baseline is a legitimate forecast that measurement showed to be
+  // MORE accurate than the learned model on this data; the hard-coded
+  // fallback really is a placeholder.
+  const isBaseline = forecast.model_version.startsWith('egsi-baseline');
   const isFallback = forecast.model_version.endsWith('-fallback');
   const band = stressBand(forecast.expected_egsi);
 
@@ -37,7 +43,14 @@ export function ForecastPanel({ forecast }: { forecast: Forecast | null }) {
 
       {isFallback && (
         <div className="notice warn" style={{ marginBottom: '1rem' }}>
-          Showing the fallback forecast, not a trained model. Treat these numbers as placeholders.
+          No forecast available yet. These numbers are placeholders.
+        </div>
+      )}
+
+      {isBaseline && (
+        <div className="notice" style={{ marginBottom: '1rem' }}>
+          Statistical baseline. Gas congestion is strongly mean-reverting, so the recent
+          average predicts it better than the learned model does.
         </div>
       )}
 
@@ -57,8 +70,8 @@ export function ForecastPanel({ forecast }: { forecast: Forecast | null }) {
           <dd className="tabular">{formatConfidence(forecast.p_tail_500)}</dd>
         </div>
         <div className="row">
-          <dt>Model</dt>
-          <dd>{forecast.model_version}</dd>
+          <dt>Method</dt>
+          <dd>{isBaseline ? 'Recent mean' : forecast.model_version}</dd>
         </div>
       </dl>
     </div>
