@@ -19,6 +19,7 @@ EGSI value on-chain (§6).
 | `inference/baseline` | naive forecasts (`last_value`, `moving_average`) the model must beat |
 | `inference/forecaster` | LightGBM quantile-band forecast, confidence, `P(EGSI > 500)`, baseline/fallback gating |
 | `inference/train` | CLI: trains and saves a model to `models/` |
+| `inference/evaluate` | CLI: measures skill vs both baselines, band calibration, directional accuracy |
 | `oracle/publisher` | publishes EGSI to `contracts/gasx`'s `OracleState` on Sui (§6) |
 | `main` | FastAPI app wiring all of the above together |
 
@@ -133,6 +134,20 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 venv/bin/pytest
   didn't beat its naive baseline (`TrainedModel.beats_baseline`), or
   inference itself throws — matching §4: "hard-coded fallback forecast
   keeps the demo alive if the model fails."
+- **Evaluate before trusting the numbers.** `beats_baseline` is a
+  boolean and a deliberately low bar — it only means the model beat
+  "predict no change". `python -m inference.evaluate --from-gateway
+  http://localhost:3000 --compare-horizons` reports how *much* better,
+  whether the confidence figure is honest, and whether direction is
+  better than a coin flip. Expect a single-digit skill score: real, but
+  marginal, and not the same as accurate.
+- **The confidence figure is likely overstated.** The band is trained as
+  a 10th-90th percentile interval, so it should contain the true value
+  ~80% of the time; measured coverage runs closer to 60%, meaning the
+  interval is too narrow and the model claims more certainty than it
+  has. `inference/evaluate` warns when it detects this. Widening the
+  quantiles, or calibrating the band on held-out data, is the fix —
+  neither is done yet.
 - **Confidence and `p_tail_500` come from a "simple quantile band"**
   (§4), not a calibrated probabilistic model: three LightGBM regressors
   (median + low/high quantile) share the same features; the band width
