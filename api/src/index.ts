@@ -10,6 +10,7 @@ import { ThetanutsHedgeProvider } from '@gasx/thetanuts-adapter';
 import { HttpAiClient } from './aiClient.js';
 import { loadGatewayConfig } from './config.js';
 import { createDatabase } from './db.js';
+import { CppEngineLayer } from './engineLayer.js';
 import { buildServer } from './server.js';
 
 // Load the gateway's own .env plus both chain adapters' .env files
@@ -29,6 +30,13 @@ const aiClient = new HttpAiClient(config.aiServiceUrl);
 
 const app = buildServer({
   db,
+  engine: new CppEngineLayer({
+    contractMultiplier: 10,
+    marginRatioBps: 1000,
+    maxOrderQuantity: config.riskPolicy.maxOrderContracts,
+    maxNetPosition: config.riskPolicy.maxPositionContracts,
+    minConfidence: config.riskPolicy.minModelConfidence,
+  }),
   chainAdapter: new SuiChainAdapter(config.sui),
   hedgeProvider: new ThetanutsHedgeProvider(config.thetanuts),
   aiClient,

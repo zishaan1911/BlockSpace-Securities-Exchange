@@ -1,0 +1,190 @@
+#!/usr/bin/env bash
+#
+# Publishes contracts/gasx to Sui and creates the EGSI-1H market plus its
+# oracle, then writes the resulting object IDs into the adapters' .env
+# files so the stack switches off dev-market mode.
+#
+#   ./scripts/deploy-sui.sh              # publish to the active network
+#   ./scripts/deploy-sui.sh --dry-run    # show what it would do
+#
+# This spends gas. On testnet that is free from the faucet; if your
+# active environment is mainnet the script refuses unless you pass
+# --allow-mainnet, because publishing there costs real SUI.
+#
+# Requires: the sui CLI on PATH, an active address with gas, and jq.
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DRY_RUN=0
+ALLOW_MAINNET=0
+
+for arg in "$@"; do
+  case "$arg" in
+    --dry-run)       DRY_RUN=1 ;;
+    --allow-mainnet) ALLOW_MAINNET=1 ;;
+    -h|--help)       sed -n '2,16p' "$0"; exit 0 ;;
+    *) echo "unknown option: $arg" >&2; exit 1 ;;
+  esac
+done
+
+say()  { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
+ok()   { printf '    \033[32m✓\033[0m %s\n' "$*"; }
+die()  { printf '\n\033[31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
+
+command -v sui >/dev/null 2>&1 || die "sui CLI not found. See scripts/README.md."
+command -v jq  >/dev/null 2>&1 || die "jq not found. Install with: sudo apt-get install -y jq"
+
+# ---------------------------------------------------------------------------
+say "Checking the Sui environment"
+# ---------------------------------------------------------------------------
+
+ACTIVE_ENV="$(sui client active-env 2>/dev/null || true)"
+ACTIVE_ADDR="$(sui client active-address 2>/dev/null || true)"
+[ -n "$ACTIVE_ENV" ]  || die "no active Sui environment. Try: sui client new-env --alias testnet --rpc https://fullnode.testnet.sui.io:443 && sui client switch --env testnet"
+[ -n "$ACTIVE_ADDR" ] || die "no active Sui address. Try: sui client new-address ed25519"
+
+ok "network: $ACTIVE_ENV"
+ok "address: $ACTIVE_ADDR"
+
+if [ "$ACTIVE_ENV" = "mainnet" ] && [ "$ALLOW_MAINNET" -eq 0 ]; then
+  die "active env is mainnet and publishing there costs real SUI. Re-run with --allow-mainnet if you mean it."
+fi
+
+# Publishing needs gas. Checking now gives a clear message instead of a
+# confusing failure partway through.
+GAS_COUNT="$(sui client gas --json 2>/dev/null | jq 'length' || echo 0)"
+[ "$GAS_COUNT" -gt 0 ] || die "no gas coins for $ACTIVE_ADDR. On testnet: sui client faucet"
+ok "$GAS_COUNT gas coin(s) available"
+
+if [ "$DRY_RUN" -eq 1 ]; then
+  echo
+  echo "Dry run. Would:"
+  echo "  1. sui client publish contracts/gasx"
+  echo "  2. call gasx::oracle::create_oracle  (publisher=$ACTIVE_ADDR)"
+  echo "  3. call gasx::market::create_market  (EGSI-1H)"
+  echo "  4. write PACKAGE/MARKET/ORACLE ids into blockchain/sui/.env and ai/.env"
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
+say "Publishing contracts/gasx"
+# ---------------------------------------------------------------------------
+
+PUBLISH_JSON="$(sui client publish --gas-budget 500000000 --json "$REPO_ROOT/contracts/gasx")"
+
+PACKAGE_ID="$(echo "$PUBLISH_JSON" | jq -r '
+  .objectChanges[] | select(.type == "published") | .packageId')"
+[ -n "$PACKAGE_ID" ] && [ "$PACKAGE_ID" != "null" ] || die "could not find the package id in the publish output"
+ok "package: $PACKAGE_ID"
+
+# admin.move's init mints an AdminCap to the publisher; both create_
+# calls need it as their first argument.
+ADMIN_CAP="$(echo "$PUBLISH_JSON" | jq -r --arg pkg "$PACKAGE_ID" '
+  .objectChanges[]
+  | select(.type == "created")
+  | select(.objectType | test("::admin::AdminCap$"))
+  | .objectId')"
+[ -n "$ADMIN_CAP" ] && [ "$ADMIN_CAP" != "null" ] || die "no AdminCap was created by publish"
+ok "admin cap: $ADMIN_CAP"
+
+# ---------------------------------------------------------------------------
+say "Creating the oracle"
+# ---------------------------------------------------------------------------
+
+# max_price 1000 is the EGSI scale's ceiling (ARCHITECTURE.md §3); the
+# contract rejects anything above it. 120000ms = 2 minutes of staleness
+# tolerance, comfortably longer than the ~12s publish cadence.
+ORACLE_JSON="$(sui client call --json --gas-budget 100000000 \
+  --package "$PACKAGE_ID" --module oracle --function create_oracle \
+  --args "$ADMIN_CAP" "$ACTIVE_ADDR" 120000 1000)"
+
+ORACLE_ID="$(echo "$ORACLE_JSON" | jq -r '
+  .objectChanges[]
+  | select(.type == "created")
+  | select(.objectType | test("::oracle::OracleState$"))
+  | .objectId')"
+[ -n "$ORACLE_ID" ] && [ "$ORACLE_ID" != "null" ] || die "oracle creation did not return an OracleState"
+ok "oracle: $ORACLE_ID"
+ok "publisher authorised: $ACTIVE_ADDR"
+
+# ---------------------------------------------------------------------------
+say "Creating the EGSI-1H market"
+# ---------------------------------------------------------------------------
+
+# One hour out, in milliseconds — EGSI-1H is a one-hour product.
+EXPIRY_MS=$(( ($(date +%s) + 3600) * 1000 ))
+
+MARKET_JSON="$(sui client call --json --gas-budget 100000000 \
+  --package "$PACKAGE_ID" --module market --function create_market \
+  --args "$ADMIN_CAP" "EGSI-1H" "$EXPIRY_MS" 10 10 1000 "$ORACLE_ID")"
+
+MARKET_ID="$(echo "$MARKET_JSON" | jq -r '
+  .objectChanges[]
+  | select(.type == "created")
+  | select(.objectType | test("::market::Market$"))
+  | .objectId')"
+[ -n "$MARKET_ID" ] && [ "$MARKET_ID" != "null" ] || die "market creation did not return a Market"
+ok "market: $MARKET_ID"
+ok "expires: $(date -d "@$((EXPIRY_MS / 1000))" 2>/dev/null || echo "$EXPIRY_MS ms")"
+
+# ---------------------------------------------------------------------------
+say "Writing configuration"
+# ---------------------------------------------------------------------------
+
+RPC_URL="$(sui client envs --json 2>/dev/null \
+  | jq -r --arg e "$ACTIVE_ENV" '.[0][] | select(.alias == $e) | .rpc' || true)"
+[ -n "$RPC_URL" ] && [ "$RPC_URL" != "null" ] || RPC_URL="https://fullnode.${ACTIVE_ENV}.sui.io:443"
+
+set_env() {   # file key value
+  local file="$1" key="$2" value="$3"
+  touch "$file"
+  if grep -q "^${key}=" "$file"; then
+    # Use | as the delimiter: object ids contain no |, but URLs contain /.
+    sed -i "s|^${key}=.*|${key}=${value}|" "$file"
+  else
+    echo "${key}=${value}" >> "$file"
+  fi
+}
+
+SUI_ENV="$REPO_ROOT/blockchain/sui/.env"
+set_env "$SUI_ENV" GASX_SUI_RPC_URL "$RPC_URL"
+set_env "$SUI_ENV" GASX_SUI_NETWORK "$ACTIVE_ENV"
+set_env "$SUI_ENV" GASX_SUI_PACKAGE_ID "$PACKAGE_ID"
+set_env "$SUI_ENV" GASX_SUI_MARKET_ID "$MARKET_ID"
+set_env "$SUI_ENV" GASX_SUI_ORACLE_ID "$ORACLE_ID"
+# This is what actually turns dev-market mode off.
+set_env "$SUI_ENV" GASX_SUI_DEV_MARKET "false"
+ok "blockchain/sui/.env updated (dev market OFF)"
+
+AI_ENV="$REPO_ROOT/ai/.env"
+set_env "$AI_ENV" GASX_AI_SUI_RPC_URL "$RPC_URL"
+set_env "$AI_ENV" GASX_AI_SUI_PACKAGE_ID "$PACKAGE_ID"
+set_env "$AI_ENV" GASX_AI_SUI_ORACLE_OBJECT_ID "$ORACLE_ID"
+ok "ai/.env updated (oracle publishing target set)"
+
+cat <<EOF
+
+$(printf '\033[1;32mDeployed.\033[0m')
+
+  package  $PACKAGE_ID
+  market   $MARKET_ID
+  oracle   $ORACLE_ID
+  admin    $ADMIN_CAP   <- keep this; it gates pause and settlement
+
+The AdminCap is owned by $ACTIVE_ADDR. It is not written to any .env
+because nothing in the running stack needs it — it is used from the CLI
+for admin actions, and it should not sit in a file the services read.
+
+Restart the gateway to pick this up:
+
+    cd api && npm run dev
+
+It should no longer print the dev-market warning, and GET /api/v1/market
+will read the real Market object.
+
+The AI service still needs GASX_AI_SUI_PUBLISHER_PRIVATE_KEY set before
+it can publish EGSI on-chain. That key must belong to $ACTIVE_ADDR,
+since that is the address authorised as the oracle publisher above.
+
+EOF

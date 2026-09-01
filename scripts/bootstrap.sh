@@ -88,10 +88,10 @@ sudo apt-get update -qq
 # fails at load with an opaque shared-library error, so it is a hard
 # requirement rather than a nicety.
 sudo apt-get install -y -qq \
-  build-essential cmake git curl ca-certificates \
+  build-essential cmake git curl ca-certificates jq \
   python3 python3-pip python3-venv \
-  libgomp1
-ok "build tools, python3 (+venv), libgomp1"
+  libgomp1 libnode-dev
+ok "build tools, python3 (+venv), libgomp1, libnode-dev, jq"
 
 # ---------------------------------------------------------------------------
 say "Node.js 20"
@@ -196,6 +196,12 @@ say "TypeScript packages"
 
 # Order matters: api/ depends on both adapters as local file: packages
 # and needs their compiled dist/ to exist before it can typecheck.
+# The C++ engine's N-API addon. api/ depends on it as a local package,
+# so it has to compile before api/ installs.
+cd "$REPO_ROOT/engine/binding"
+npm install --silent
+ok "engine/binding (C++ N-API addon) built"
+
 for PKG in blockchain/thetanuts blockchain/sui; do
   cd "$REPO_ROOT/$PKG"
   npm install --silent
@@ -242,6 +248,11 @@ To bring over collected EGSI history from another machine:
     ./scripts/db-export.sh
     # copy the .sql.gz across, then here
     ./scripts/db-import.sh gasx-export-YYYY-MM-DD.sql.gz
+
+To deploy the contracts and leave dev-market mode:
+
+    ./scripts/deploy-sui.sh --dry-run    # see what it would do
+    ./scripts/deploy-sui.sh
 
 Note: the contracts are not deployed, so the Sui adapter serves a
 synthetic dev market. Reads work; orders cannot be prepared. See

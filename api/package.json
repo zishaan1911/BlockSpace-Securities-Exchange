@@ -19,7 +19,8 @@
     "@gasx/sui-adapter": "file:../blockchain/sui",
     "@gasx/thetanuts-adapter": "file:../blockchain/thetanuts",
     "fastify": "^5.12.1",
-    "mysql2": "^3.24.2"
+    "mysql2": "^3.24.2",
+    "@gasx/engine": "file:../engine/binding"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
