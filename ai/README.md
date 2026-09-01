@@ -201,6 +201,18 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 venv/bin/pytest
 --compare-horizons` and read the **constant mean** row, not the
 no-change row.
 
+**Measured result: the model does not forecast the level.** Skill over a
+constant mean came in NEGATIVE at every horizon tested (-2.5% to -3.4%
+on 2,550 real readings). It is worse than always predicting the average.
+The training gate now checks the harder of the two baselines, so such a
+model is no longer served — `/forecast` reports the honest fallback
+instead, and the UI banner stays up. That is the design working.
+
+The one genuinely strong result is **direction**: 72-77% correct sign of
+move, well above a coin flip. The model knows which way EGSI is heading
+even though it cannot predict how far. That is worth something to a
+trader choosing a side, and it is the honest thing to claim.
+
 EGSI is strongly mean-reverting, which makes "predict no change" an easy
 baseline to beat — a model can post a 30% skill score against it while
 doing nothing cleverer than regressing toward the average. Measured on

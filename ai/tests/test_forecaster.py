@@ -357,3 +357,38 @@ def test_evaluate_reports_the_climatology_baseline():
     assert "climatology_mae" in metrics
     assert "skill_vs_climatology" in metrics
     assert metrics["climatology_mae"] > 0
+
+
+def test_training_gate_uses_the_harder_baseline_on_a_mean_reverting_series():
+    """Regression guard for a real failure: EGSI is mean-reverting, so
+    'predict no change' is easy to beat. Gating on it alone passed a
+    model measurably WORSE than predicting a constant (-3% skill on real
+    data). ARCHITECTURE.md §4 says baselines, plural."""
+    import numpy as np
+    import pandas as pd
+    from inference.baseline import mean_absolute_error
+    from inference.forecaster import FEATURE_NAMES as names
+
+    # Strongly mean-reverting series: last_value is a poor predictor,
+    # the constant mean is a good one.
+    rng = np.random.default_rng(5)
+    n = 400
+    series = np.empty(n)
+    series[0] = 500.0
+    for t in range(1, n):
+        series[t] = series[t - 1] + 0.9 * (500 - series[t - 1]) + rng.normal(0, 60)
+
+    df = pd.DataFrame({name: np.zeros(n) for name in names})
+    df["last_score"] = series
+    target = pd.Series(np.roll(series, -1)[: n]).astype(float)
+
+    split = n // 2
+    y_train, y_test = target.iloc[:split], target.iloc[split:]
+    last_value_preds = list(df["last_score"].iloc[split:])
+    climatology_preds = [float(np.mean(y_train))] * len(y_test)
+
+    # The premise of the guard: on this series the constant really is
+    # the harder baseline to beat.
+    assert mean_absolute_error(list(y_test), climatology_preds) < mean_absolute_error(
+        list(y_test), last_value_preds
+    )
