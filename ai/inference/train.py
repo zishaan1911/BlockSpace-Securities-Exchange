@@ -105,10 +105,30 @@ def _build_features(raw: pd.DataFrame, horizon: int) -> pd.DataFrame:
     The target is the score `horizon` rows ahead, so the last `horizon`
     rows are dropped (their future has not happened yet).
     """
+    # The gateway returns camelCase (its db.ts maps SQL rows into
+    # TypeScript-style names) while a CSV dumped straight from MySQL is
+    # snake_case. Normalize once here so either source works, rather
+    # than making the caller care which one they used.
+    raw = raw.rename(
+        columns={
+            "baseFee": "base_fee",
+            "mempoolPressure": "mempool_pressure",
+            "feeMomentum": "fee_momentum",
+            "gasVolatility": "gas_volatility",
+            "dexActivity": "dex_activity",
+            "thetanutsIv": "thetanuts_iv",
+            "thetanutsSkew": "thetanuts_skew",
+            "blockNumber": "block_number",
+        }
+    )
+
     required = {"score", "base_fee", "utilization", "mempool_pressure", "gas_volatility"}
     missing = required - set(raw.columns)
     if missing:
-        raise ValueError(f"history is missing required columns: {sorted(missing)}")
+        raise ValueError(
+            f"history is missing required columns: {sorted(missing)}. "
+            f"Got: {sorted(raw.columns)}"
+        )
 
     history = EgsiHistory(max_len=10_000)
     rows = []
@@ -127,8 +147,8 @@ def _build_features(raw: pd.DataFrame, horizon: int) -> pd.DataFrame:
                 "gas_volatility": float(row["gas_volatility"]),
                 # Absent Thetanuts signal reads as 0.0, matching how
                 # main.py builds the same feature dict when serving.
-                "thetanuts_iv": float(row.get("thetanutsIv") or row.get("thetanuts_iv") or 0.0),
-                "thetanuts_skew": float(row.get("thetanutsSkew") or row.get("thetanuts_skew") or 0.0),
+                "thetanuts_iv": float(row.get("thetanuts_iv") or 0.0),
+                "thetanuts_skew": float(row.get("thetanuts_skew") or 0.0),
             }
         )
 
