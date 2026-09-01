@@ -172,3 +172,88 @@ def test_build_features_accepts_the_gateways_camelcase_column_names():
     assert built["base_fee"].iloc[0] == 0.05
     assert built["mempool_pressure"].iloc[0] == 0.33
     assert built["thetanuts_iv"].iloc[0] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Rich feature engineering.
+# ---------------------------------------------------------------------------
+
+
+def test_rich_features_add_lags_rolling_stats_and_time_of_day():
+    import pandas as pd
+    from features.engineering import build_rich_features
+
+    raw = pd.DataFrame({
+        "score": list(range(100, 500)),
+        "block_timestamp": [1_788_100_000 + i * 21 for i in range(400)],
+        "base_fee": [0.05] * 400, "utilization": [0.5] * 400,
+        "mempool_pressure": [0.33] * 400, "gas_volatility": [0.2] * 400,
+    })
+    built = build_rich_features(raw)
+
+    assert "lag_5" in built and "delta_5" in built
+    assert "roll_mean_50" in built and "roll_z_50" in built
+    assert "hour_sin" in built and "hour_cos" in built
+    # Substantially more than the original ten features.
+    assert len(built.columns) > 20
+
+
+def test_time_of_day_is_cyclical_so_midnight_wraps():
+    import pandas as pd
+    from features.engineering import build_rich_features
+
+    # 23:30 and 00:30 are an hour apart in reality; a linear hour
+    # encoding would place them 23 hours apart.
+    raw = pd.DataFrame({
+        "score": [100, 100],
+        "block_timestamp": [84_600, 1_800],  # 23:30 and 00:30 UTC
+        "base_fee": [0.0, 0.0], "utilization": [0.0, 0.0],
+        "mempool_pressure": [0.0, 0.0], "gas_volatility": [0.0, 0.0],
+    })
+    built = build_rich_features(raw)
+    distance = abs(built["hour_sin"].iloc[0] - built["hour_sin"].iloc[1])
+    assert distance < 0.5
+
+
+def test_rich_features_survive_missing_timestamps():
+    import pandas as pd
+    from features.engineering import build_rich_features
+
+    raw = pd.DataFrame({
+        "score": list(range(50)), "base_fee": [0.0] * 50, "utilization": [0.0] * 50,
+        "mempool_pressure": [0.0] * 50, "gas_volatility": [0.0] * 50,
+    })
+    built = build_rich_features(raw)
+    # Columns stay stable so a model trained with them can still score.
+    assert "hour_sin" in built
+    assert (built["hour_sin"] == 0.0).all()
+
+
+def test_direction_target_marks_rises_as_one():
+    import pandas as pd
+    from features.engineering import add_targets, build_rich_features
+
+    raw = pd.DataFrame({
+        "score": [100, 200, 150], "base_fee": [0.0] * 3, "utilization": [0.0] * 3,
+        "mempool_pressure": [0.0] * 3, "gas_volatility": [0.0] * 3,
+    })
+    built = add_targets(build_rich_features(raw), horizon=1)
+    assert built["target_direction"].iloc[0] == 1   # 100 -> 200, up
+    assert built["target_direction"].iloc[1] == 0   # 200 -> 150, down
+
+
+def test_reversion_baseline_predicts_toward_the_mean():
+    """This baseline is what a direction classifier must beat. On a
+    mean-reverting series it is well above a coin flip for free."""
+    import pandas as pd
+    from features.engineering import build_rich_features, reversion_direction_baseline
+
+    raw = pd.DataFrame({
+        "score": [500] * 100 + [100] * 100,
+        "base_fee": [0.0] * 200, "utilization": [0.0] * 200,
+        "mempool_pressure": [0.0] * 200, "gas_volatility": [0.0] * 200,
+    })
+    built = build_rich_features(raw)
+    baseline = reversion_direction_baseline(built)
+    # Far below the running mean, so it should predict "up".
+    assert baseline.iloc[-1] == 1
