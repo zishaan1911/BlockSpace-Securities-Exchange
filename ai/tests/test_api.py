@@ -88,14 +88,24 @@ def test_health_reflects_history_length_after_cycles(client):
     assert resp.json()["history_len"] == 2
 
 
-def test_forecast_after_cycle_returns_fallback_when_no_model_loaded(client):
-    run_cycle_with_mocked_ingestion(client)
+def test_forecast_serves_the_statistical_baseline_when_no_model_qualifies(client):
+    """ARCHITECTURE.md §4: ship the baseline when no model beats it. On
+    real data the baseline is the more accurate predictor, so this is
+    the correct answer rather than a degraded one."""
+    client.post("/history/restore", json={"scores": [400, 420, 450, 430, 410, 440, 425, 415, 435, 445]})
     resp = client.get("/forecast")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["model_version"] == "egsi-v1-fallback"
+    assert body["model_version"] == "egsi-baseline-v1"
     assert 0.0 <= body["confidence"] <= 1.0
     assert 0.0 <= body["p_tail_500"] <= 1.0
+    # Unlike the old hard-coded 500.0 placeholder, this tracks the data.
+    assert 400 <= body["expected_egsi"] <= 460
+
+
+def test_forecast_reports_503_with_too_little_history_rather_than_inventing_one(client):
+    client.post("/history/restore", json={"scores": [400, 420]})
+    assert client.get("/forecast").status_code == 503
 
 
 def test_publish_returns_503_when_no_snapshot_yet(client):
@@ -127,9 +137,9 @@ def test_forecast_reflects_thetanuts_skew_from_last_cycle(client):
         mock_cls.return_value = mock_instance
         client.post("/cycle", json={"thetanuts_atm_iv": 0.9, "thetanuts_skew_25delta": 0.12})
 
-    # Fallback forecaster ignores feature values, but the endpoint
-    # should still resolve without error with a Thetanuts signal present
-    # in state — this exercises the feature_dict construction path.
+    # Needs enough history for the baseline to speak; the point is that
+    # the endpoint resolves with a Thetanuts signal present in state.
+    client.post("/history/restore", json={"scores": [400, 420, 450, 430, 410, 440, 425, 415, 435, 445]})
     resp = client.get("/forecast")
     assert resp.status_code == 200
 
@@ -162,7 +172,7 @@ def test_restore_enables_forecasting_without_waiting_for_new_cycles(client):
     assert client.get("/forecast").status_code == 503
     # ...but available immediately once history is restored, which is the
     # whole point: a restart should not cost the forecaster its context.
-    client.post("/history/restore", json={"scores": [400, 420, 450]})
+    client.post("/history/restore", json={"scores": [400, 420, 450, 430, 410, 440, 425, 415, 435, 445]})
     assert client.get("/forecast").status_code == 200
 
 
