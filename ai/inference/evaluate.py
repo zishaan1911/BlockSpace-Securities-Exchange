@@ -226,17 +226,25 @@ def main(gateway_url: str, horizons: list[int], test_fraction: float) -> None:
         print("=" * 62)
         print("  Horizon comparison")
         print("=" * 62)
-        print(f"  {'horizon':>8}  {'MAE':>8}  {'skill':>8}  {'coverage':>9}  {'direction':>10}")
+        print(f"  {'horizon':>8}  {'MAE':>8}  {'vs const':>9}  {'coverage':>9}  {'direction':>10}")
         for m in results:
             print(
                 f"  {m['horizon']:>8}  {m['model_mae']:>8.2f}  "
-                f"{m['skill_vs_last_value']:>7.1f}%  {m['band_coverage'] * 100:>8.1f}%  "
+                f"{m['skill_vs_climatology']:>8.1f}%  {m['band_coverage'] * 100:>8.1f}%  "
                 f"{m['directional_accuracy'] * 100:>9.1f}%"
             )
-        best = max(results, key=lambda r: r["skill_vs_last_value"])
-        print(f"\n  Best skill at horizon {best['horizon']}.")
-        print("  Longer horizons are harder, so a falling skill score across")
-        print("  horizons is expected, not a bug.")
+        best = max(results, key=lambda r: r["skill_vs_climatology"])
+        print(f"\n  Best skill over a constant: horizon {best['horizon']} "
+              f"({best['skill_vs_climatology']:.1f}%).")
+        if best["skill_vs_climatology"] < 0:
+            print("\n  The model loses to a constant at EVERY horizon. It is not")
+            print("  forecasting the level. Note that directional accuracy is still")
+            print("  well above chance, so there is real signal in the SIGN of the")
+            print("  move even though the magnitude is not predicted.")
+        maes = [m["model_mae"] for m in results]
+        if max(maes) - min(maes) < 0.1 * statistics.fmean(maes):
+            print("\n  MAE is nearly flat across a wide range of horizons, which is")
+            print("  the signature of predicting the mean rather than the trajectory.")
         print()
 
 

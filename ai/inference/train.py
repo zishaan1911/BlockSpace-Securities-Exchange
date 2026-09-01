@@ -44,7 +44,7 @@ import numpy as np
 import pandas as pd
 
 from features.history import EgsiHistory
-from inference.baseline import last_value
+from inference.baseline import last_value, mean_absolute_error as _mae
 from inference.forecaster import FEATURE_NAMES, train
 
 MODELS_DIR = Path(__file__).resolve().parent.parent / "models"
@@ -209,7 +209,24 @@ def main(
     # that row's target.
     naive_predictions = [last_value([v]) for v in X_test["last_score"]]
 
-    model = train(X_train, y_train, X_test, y_test, naive_predictions)
+    # Gate on the HARDER of the two baselines. ARCHITECTURE.md §4 says
+    # the model must beat naive baselines (plural) out-of-sample, and
+    # checking only last_value let a model through that was measurably
+    # worse than predicting a constant: EGSI is strongly mean-reverting,
+    # so "no change" is easy to beat while saying nothing about whether
+    # the model forecasts. Climatology is the baseline that actually
+    # distinguishes the two.
+    climatology = [float(np.mean(y_train))] * len(y_test)
+    last_value_mae = _mae(list(y_test), naive_predictions)
+    climatology_mae = _mae(list(y_test), climatology)
+    harder = naive_predictions if last_value_mae <= climatology_mae else climatology
+    if climatology_mae < last_value_mae:
+        print(
+            f"Note: a constant mean (MAE {climatology_mae:.2f}) predicts this series better "
+            f"than no-change (MAE {last_value_mae:.2f}), so the model is gated on the constant."
+        )
+
+    model = train(X_train, y_train, X_test, y_test, harder)
 
     MODELS_DIR.mkdir(exist_ok=True)
     model.median.save_model(str(MODELS_DIR / "egsi_median.txt"))
@@ -230,10 +247,14 @@ def main(
     print(f"beats_baseline={model.beats_baseline}  (train={len(train_df)} rows, test={len(test_df)} rows)")
     if not model.beats_baseline:
         print(
-            "WARNING: model did not beat the naive baseline on this split — "
-            "per ARCHITECTURE.md §4, the service should ship the baseline, "
-            "not this model. Saved anyway for inspection; do not load it "
-            "into Forecaster for serving."
+            "\nWARNING: the model did not beat its naive baseline out-of-sample.\n"
+            "Per ARCHITECTURE.md §4 the service ships the baseline instead, so this\n"
+            "model will NOT be loaded and /forecast will keep reporting the honest\n"
+            "fallback. Saved for inspection only.\n"
+            "\n"
+            "Run `python -m inference.evaluate --from-gateway <url> --compare-horizons`\n"
+            "to see why. On a mean-reverting series this usually means the model is\n"
+            "predicting the average rather than the trajectory."
         )
     print(f"Saved to {MODELS_DIR}/")
 
