@@ -20,7 +20,7 @@ const LABELS: Record<keyof EgsiComponents, string> = {
 
 export function DriverBars({ components }: { components: EgsiComponents | null }) {
   if (!components) {
-    return <p className="empty">No breakdown yet. It arrives with the first reading.</p>;
+    return <p className="empty">No breakdown yet.</p>;
   }
 
   const entries = (Object.keys(LABELS) as (keyof EgsiComponents)[])
@@ -31,15 +31,15 @@ export function DriverBars({ components }: { components: EgsiComponents | null }
     <div className="bars">
       {entries.map(({ key, label, value }) => (
         <div className="bar-row" key={key}>
-          <span className="bar-label">{label}</span>
+          <span className="lbl">{label}</span>
           {value === null ? (
-            <span className="bar-absent">no live signal</span>
+            <span className="absent">no signal</span>
           ) : (
-            <span className="bar-track">
-              <span className="bar-fill" style={{ width: `${Math.round(value * 100)}%` }} />
+            <span className="track">
+              <span className="fill" style={{ width: `${Math.round(value * 100)}%` }} />
             </span>
           )}
-          <span className="bar-figure tabular">{value === null ? '—' : formatComponent(value)}</span>
+          <span className="val">{value === null ? '—' : formatComponent(value)}</span>
         </div>
       ))}
     </div>

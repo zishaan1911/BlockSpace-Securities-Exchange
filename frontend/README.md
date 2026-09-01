@@ -74,34 +74,37 @@ frontend/
 
 ## Design
 
-**Direction: industrial instrument panel, not crypto dashboard.**
+**Direction: Bloomberg Terminal.**
 
-The product measures Ethereum *network pressure*, and a 0–1000 stress
-index is literally a gauge reading — so the vernacular is drawn from
-pipeline and process-control monitoring equipment rather than from
-trading terminals. That gives the page its one signature element: EGSI
-rendered as a calibrated 270° arc gauge with scale marks at the band
-boundaries, so a reading can be judged against them without a legend.
-Everything else on the page is deliberately quiet so the gauge carries
-the weight.
+That is a specific, historically grounded language rather than a generic
+dark theme, and it has rules worth following exactly:
 
-- **Palette** — cool slate housing (`#10161b`–`#26333d`) rather than a
-  tinted near-black, with a three-stop state ramp: cyan `#46b3c4`
-  (nominal), sodium amber `#e0a33c` (elevated), red `#d9503c`
-  (critical). Saturated color is *state-carrying, not decorative*: it
-  appears on the gauge arc, the band label, and risk verdicts, and
-  essentially nowhere else.
-- **Type** — Barlow Condensed for instrument labelling and readouts
-  (condensed grotesques are what actual gauge faces use), IBM Plex Sans
-  for body. Numerics use `font-variant-numeric: tabular-nums` so columns
-  align — a functional choice, not a monospace-as-decoration one.
-- **Bands** — nominal below 500, elevated 500–749, critical 750+. 500 is
-  the meaningful boundary because it is the threshold the AI forecast
-  reports a tail probability against (`p_tail_500`, ARCHITECTURE.md §4),
-  so "elevated" starts exactly where the model starts caring.
-- **Motion** — one transition, on the gauge arc, so a changing reading
-  is legible as movement. No scroll reveals, no hover animations.
-  `prefers-reduced-motion` disables it.
+- **Amber on black.** Amber (`#ffa028`) is the primary text colour, not
+  an accent used sparingly. Cyan (`#2fb6e8`) carries section headers as
+  solid title bars with inverted black text. White-ish (`#f0ede6`) is
+  reserved for data *values*, so numbers read louder than their labels.
+  Green and red appear only for direction, never decoratively.
+- **Density over comfort.** 11.5px monospace, tight leading, three
+  columns, everything on one screen. A terminal is scanned for a number,
+  not browsed, so panels sit tight rather than breathing.
+- **Hard rectangles.** No border radius, no shadows, no gradients.
+- **Right-aligned tabular numerics** so columns compare by eye.
+
+Monospace throughout is the one case where it is correct rather than
+decorative: column alignment is load-bearing, and the terminal idiom is
+itself monospaced. IBM Plex Mono stands in for Bloomberg's proprietary
+face — a deliberate pick, not a fallback.
+
+This replaced an earlier instrument-panel design whose signature element
+was a 270-degree arc gauge. A dial is instrument vernacular; a terminal
+shows the number large, the level as a horizontal band scale with the
+500/750 boundaries marked, and the recent series as a sparkline beside
+it. Losing the gauge was the point of the change, not a casualty of it.
+
+**Layout** follows the order a trader reads: what the index is doing
+(left), what it is worth and where it trades (centre), what you can do
+about it (right). One screen, because there is one market
+(ARCHITECTURE.md §12).
 
 ## What the screen shows
 
@@ -111,6 +114,8 @@ the weight.
 | What's driving it | `egsi.components`, sorted by contribution |
 | Forecast | `forecast`, with an explicit warning when it's the fallback |
 | Market terms | `market` — expiry, tick, margin, oracle freshness |
+| Depth ladder | `orderbook` + `quote` from the C++ engine — **indicative** |
+| Sparkline | `GET /api/v1/history`, last 240 readings |
 | Place an order | `POST /api/v1/orders/prepare`, then the wallet signs |
 | ETH-correlated risk | `POST /api/v1/hedge/assess` and `/evaluate` |
 
@@ -119,6 +124,14 @@ the gateway, which runs its pre-trade risk checks and returns a
 serialized transaction; the wallet signs that. There is no client-side
 path that produces a signable transaction without the gateway having
 approved it first — the risk checks are unbypassable from the browser.
+
+**The depth ladder is labelled indicative, permanently.** Those levels
+come from the C++ engine quoting off the AI forecast, not from resting
+orders anyone placed — `contracts/gasx` owns the real book and there is
+no indexer to read it from. A depth ladder is about the most
+executable-looking thing a screen can show, so the label sits in the
+panel header and again beneath the table, and rides in the API payload
+as `indicative: true` rather than living only in a comment.
 
 **The hedge panel shows reasoning, not just outcomes.** ARCHITECTURE.md
 §8's premise is that the AI can request an action but cannot bypass

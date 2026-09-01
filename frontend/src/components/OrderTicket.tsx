@@ -73,45 +73,28 @@ export function OrderTicket({ market, onFilled }: Props) {
   }
 
   return (
-    <div className="panel">
-      <div className="panel-head">
-        <h2>Place an order</h2>
-        <span className="panel-note">Signed in your wallet</span>
-      </div>
+    <div className="panel action">
+      <header>
+        <span>Order ticket</span>
+        <span>{isBid ? 'BUY' : 'SELL'}</span>
+      </header>
+      <div className="body">
+        {!account && <p className="empty">Connect a wallet to trade.</p>}
 
-      {!account && <p className="empty">Connect a wallet to trade.</p>}
-
-      {account && (
-        <>
-          <div className="field">
-            <span id="side-label" className="visually-hidden-label" style={{ fontSize: '0.85rem', color: 'var(--ink-dim)' }}>
-              Side
-            </span>
-            <div className="side-toggle" role="group" aria-labelledby="side-label">
-              <button type="button" aria-pressed={isBid} onClick={() => setIsBid(true)}>
+        {account && (
+          <div className="form">
+            <div className="sidebtns" role="group" aria-label="Side">
+              <button type="button" data-side="buy" aria-pressed={isBid} onClick={() => setIsBid(true)}>
                 Buy
               </button>
-              <button type="button" aria-pressed={!isBid} onClick={() => setIsBid(false)}>
+              <button type="button" data-side="sell" aria-pressed={!isBid} onClick={() => setIsBid(false)}>
                 Sell
               </button>
             </div>
-          </div>
 
-          <div className="field">
-            <label htmlFor="price">Index price</label>
-            <input
-              id="price"
-              inputMode="numeric"
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
-              aria-describedby="price-help"
-            />
-            <span id="price-help" className="panel-note">
-              Must be a multiple of {market.tickSize}.
-            </span>
-          </div>
+            <label htmlFor="price">Price · tick {market.tickSize}</label>
+            <input id="price" inputMode="numeric" value={price} onChange={(e) => setPrice(e.target.value)} />
 
-          <div className="field">
             <label htmlFor="quantity">Contracts</label>
             <input
               id="quantity"
@@ -119,45 +102,32 @@ export function OrderTicket({ market, onFilled }: Props) {
               value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
             />
-          </div>
 
-          <div className="field">
             <label htmlFor="margin">Margin account</label>
             <input
               id="margin"
               placeholder="0x…"
               value={marginAccountId}
               onChange={(e) => setMarginAccountId(e.target.value)}
-              aria-describedby="margin-help"
             />
-            <span id="margin-help" className="panel-note">
-              Your MarginAccount object on Sui. Open one first if you have not.
-            </span>
+
+            <button className="go" onClick={placeOrder} disabled={!canSubmit}>
+              {busy ? 'Awaiting wallet…' : `${isBid ? 'Buy' : 'Sell'} ${quantity || '0'}`}
+            </button>
+
+            {tradingClosed && (
+              <p className="indicative">{market.settled ? 'Market settled.' : 'Trading paused.'}</p>
+            )}
+
+            {error && <div className="msg err">{error}</div>}
+            {digest && (
+              <div className="msg ok">
+                Filled · {digest.slice(0, 18)}…
+              </div>
+            )}
           </div>
-
-          <button className="primary" onClick={placeOrder} disabled={!canSubmit}>
-            {busy ? 'Waiting for your wallet…' : `${isBid ? 'Buy' : 'Sell'} ${quantity || '0'} contracts`}
-          </button>
-
-          {tradingClosed && (
-            <p className="panel-note" style={{ marginTop: '0.6rem' }}>
-              {market.settled ? 'This market has settled.' : 'Trading is paused.'}
-            </p>
-          )}
-
-          {error && (
-            <div className="notice bad" style={{ marginTop: '1rem' }}>
-              {error}
-            </div>
-          )}
-
-          {digest && (
-            <div className="notice good" style={{ marginTop: '1rem' }}>
-              Order placed. Transaction <span className="tabular">{digest.slice(0, 16)}…</span>
-            </div>
-          )}
-        </>
-      )}
+        )}
+      </div>
     </div>
   );
 }

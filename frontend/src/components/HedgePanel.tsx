@@ -48,100 +48,73 @@ export function HedgePanel({ egsiLevel }: { egsiLevel: number | null }) {
   }
 
   return (
-    <div className="panel">
-      <div className="panel-head">
-        <h2>ETH-correlated risk</h2>
-        <span className="panel-note">Thetanuts · Base mainnet</span>
-      </div>
+    <div className="panel action">
+      <header>
+        <span>ETH hedge</span>
+        <span>Thetanuts · Base</span>
+      </header>
+      <div className="body">
+        <div className="form">
+          <label htmlFor="net">Net position · contracts (signed)</label>
+          <input id="net" inputMode="numeric" value={netContracts} onChange={(e) => setNetContracts(e.target.value)} />
+          <p className="indicative">No position feed yet — enter it manually.</p>
 
-      <div className="field">
-        <label htmlFor="net">Your net position, in contracts</label>
-        <input
-          id="net"
-          inputMode="numeric"
-          value={netContracts}
-          onChange={(e) => setNetContracts(e.target.value)}
-          aria-describedby="net-help"
-        />
-        <span id="net-help" className="panel-note">
-          Positive if you are net long. There is no position feed yet, so enter it yourself.
-        </span>
-      </div>
-
-      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-        <button className="secondary" onClick={() => run('assess')} disabled={!ready || busy !== null}>
-          {busy === 'assess' ? 'Checking…' : 'Check exposure'}
-        </button>
-        <button className="secondary" onClick={() => run('evaluate')} disabled={!ready || busy !== null}>
-          {busy === 'evaluate' ? 'Requesting…' : 'Request hedge quotes'}
-        </button>
-      </div>
-
-      {!ready && (
-        <p className="empty" style={{ marginTop: '0.8rem' }}>
-          Needs a live index reading first.
-        </p>
-      )}
-
-      {error && (
-        <div className="notice bad" style={{ marginTop: '1rem' }}>
-          {error}
+          <div className="sidebtns">
+            <button className="fn" onClick={() => run('assess')} disabled={!ready || busy !== null}>
+              {busy === 'assess' ? 'Checking…' : 'Assess'}
+            </button>
+            <button className="fn" onClick={() => run('evaluate')} disabled={!ready || busy !== null}>
+              {busy === 'evaluate' ? 'Quoting…' : 'Request quotes'}
+            </button>
+          </div>
         </div>
-      )}
 
-      {exposure && (
-        <dl className="rows" style={{ marginTop: '1.25rem' }}>
-          <div className="row">
-            <dt>Index exposure</dt>
-            <dd className="tabular">{formatNotional(exposure.egsiNotional)}</dd>
-          </div>
-          <div className="row">
-            <dt>ETH-correlated share</dt>
-            <dd className="tabular">{formatNotional(exposure.ethBetaNotional)}</dd>
-          </div>
-          <div className="row">
-            <dt>Hedge warranted</dt>
-            <dd style={{ color: exposure.breached ? 'var(--elevated)' : 'var(--ink-dim)' }}>
-              {exposure.breached ? `Yes — buy ${exposure.suggestedOptionType}s` : 'No, within limits'}
+        {!ready && <p className="empty" style={{ marginTop: '0.4rem' }}>Needs a live index reading.</p>}
+        {error && <div className="msg err">{error}</div>}
+
+        {exposure && (
+          <dl className="kv" style={{ marginTop: '0.5rem' }}>
+            <dt>Index notional</dt>
+            <dd>{formatNotional(exposure.egsiNotional)}</dd>
+            <dt>ETH beta</dt>
+            <dd>{formatNotional(exposure.ethBetaNotional)}</dd>
+            <dt>Hedge</dt>
+            <dd style={{ color: exposure.breached ? 'var(--amber)' : 'var(--grey)' }}>
+              {exposure.breached ? `BUY ${exposure.suggestedOptionType}` : 'Within limits'}
             </dd>
-          </div>
-        </dl>
-      )}
+          </dl>
+        )}
 
-      {evaluation && <Verdict evaluation={evaluation} />}
+        {evaluation && <Verdict evaluation={evaluation} />}
+      </div>
     </div>
   );
 }
 
 function Verdict({ evaluation }: { evaluation: HedgeEvaluation }) {
   if (!evaluation.exposure.breached) {
-    return (
-      <div className="notice" style={{ marginTop: '1rem' }}>
-        No hedge needed. Nothing was requested, so no gas was spent.
-      </div>
-    );
+    return <div className="msg info">No hedge needed. No RFQ sent, no gas spent.</div>;
   }
 
   if (evaluation.approved === undefined) {
-    return (
-      <div className="notice warn" style={{ marginTop: '1rem' }}>
-        {evaluation.reason ?? 'No quotes yet.'}
-      </div>
-    );
+    return <div className="msg warn">{evaluation.reason ?? 'No quotes yet.'}</div>;
   }
 
   const approved = evaluation.approved;
 
   return (
-    <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid var(--rule)' }}>
-      <div className="verdict" style={{ color: approved ? 'var(--nominal)' : 'var(--critical)' }}>
+    <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--rule)' }}>
+      <div style={{
+        color: approved ? 'var(--up)' : 'var(--down)',
+        fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase',
+      }}>
         {approved ? 'Risk limits cleared' : 'Blocked by risk limits'}
       </div>
 
       <div className="checks">
         {evaluation.forecast && (
           <div className="check">
-            <span className="check-mark" style={{ color: 'var(--nominal)' }}>
+            <span className="check-mark" style={{ color: 'var(--up)' }}>
               ✓
             </span>
             <span>
@@ -151,7 +124,7 @@ function Verdict({ evaluation }: { evaluation: HedgeEvaluation }) {
         )}
         {evaluation.candidate && evaluation.quotedNotional !== undefined && (
           <div className="check">
-            <span className="check-mark" style={{ color: approved ? 'var(--nominal)' : 'var(--critical)' }}>
+            <span className="check-mark" style={{ color: approved ? 'var(--up)' : 'var(--down)' }}>
               {approved ? '✓' : '✕'}
             </span>
             <span>
@@ -164,9 +137,8 @@ function Verdict({ evaluation }: { evaluation: HedgeEvaluation }) {
       </div>
 
       {approved && (
-        <div className="notice" style={{ marginTop: '1rem' }}>
-          Nothing has been traded. This build stops at the approval step and does not place the
-          options order.
+        <div className="msg info">
+          Nothing traded. This build stops at approval and does not place the options order.
         </div>
       )}
     </div>

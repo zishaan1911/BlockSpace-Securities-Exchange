@@ -1,436 +1,339 @@
 /*
- * GASX design system.
+ * GASX terminal.
  *
- * Direction: industrial instrument panel, not crypto dashboard. The
- * product measures *network pressure* — a 0-1000 stress index is
- * literally a gauge reading — so the vernacular is drawn from pipeline
- * and process-control monitoring equipment: cool slate housings, sodium
- * amber warnings, a calibrated arc as the hero. Deliberately not the
- * near-black + acid-green trading-terminal default.
+ * Direction: Bloomberg Terminal. That is a specific, historically
+ * grounded language rather than a generic "dark hacker" theme, and it
+ * has rules worth following exactly:
  *
- * Palette is state-carrying, not decorative: the cyan/amber/red ramp is
- * how the interface says "nominal / elevated / critical", and those are
- * the only places saturated color appears.
+ *   - Amber on black. The amber is the primary text colour, not an
+ *     accent used sparingly; cyan carries section headers; white is
+ *     reserved for the data values themselves so numbers read louder
+ *     than their labels.
+ *   - Density over comfort. ~11px monospace, tight leading, and as much
+ *     on screen at once as remains legible. A terminal is read by
+ *     someone scanning for a number, not browsed.
+ *   - Hard rectangles. No border radius, no shadows, no gradients.
+ *   - Title bars are solid fills with inverted (black) text.
+ *   - Numerics right-aligned and tabular so columns compare by eye.
+ *
+ * Monospace throughout is the one case where it is correct rather than
+ * decorative: column alignment is load-bearing here, and the terminal
+ * idiom is itself monospaced. IBM Plex Mono stands in for Bloomberg's
+ * proprietary face — a deliberate pick, not a fallback.
  */
 
 :root {
-  /* Housing */
-  --slate-900: #10161b;
-  --slate-800: #161e25;
-  --slate-700: #1d272f;
-  --slate-600: #26333d;
-  --rule: #2f3f4b;
+  --bg: #000000;
+  --panel: #080806;
+  --rule: #2b2519;
+  --rule-bright: #4a3f28;
 
-  /* Legends */
-  --ink: #dae3ea;
-  --ink-dim: #8fa3b1;
-  --ink-faint: #5d7180;
+  /* Amber is the voice of the interface. */
+  --amber: #ffa028;
+  --amber-dim: #a86d1c;
+  --amber-faint: #5c3d12;
 
-  /* State ramp — nominal, elevated, critical */
-  --nominal: #46b3c4;
-  --elevated: #e0a33c;
-  --critical: #d9503c;
+  /* Data values, louder than their labels. */
+  --value: #f0ede6;
 
-  --focus: #7fd4e2;
+  /* Section headers and keys. */
+  --cyan: #2fb6e8;
 
-  --gutter: 1.5rem;
-  --radius: 3px;
+  /* Direction. Green up, red down — never used decoratively. */
+  --up: #22c55e;
+  --down: #ef4444;
+
+  --grey: #6d6455;
 
   font-synthesis: none;
-  text-rendering: optimizeLegibility;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
-html,
-body,
-#root {
-  height: 100%;
-}
+html, body, #root { height: 100%; }
 
 body {
   margin: 0;
-  background: var(--slate-900);
-  color: var(--ink);
-  font-family: 'IBM Plex Sans', system-ui, sans-serif;
-  font-size: 15px;
-  line-height: 1.55;
-}
-
-/* Numeric readouts align in columns; this is functional, not stylistic. */
-.tabular {
+  background: var(--bg);
+  color: var(--amber);
+  font-family: 'IBM Plex Mono', 'Courier New', monospace;
+  font-size: 11.5px;
+  line-height: 1.45;
   font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
 }
 
-h1,
-h2,
-h3 {
-  font-family: 'Barlow Condensed', 'IBM Plex Sans', sans-serif;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  margin: 0;
-  line-height: 1.1;
-}
+a { color: var(--cyan); }
 
-a {
-  color: var(--nominal);
-}
+:focus-visible { outline: 1px solid var(--cyan); outline-offset: 1px; }
 
-:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
-}
+/* ---------- Command bar ---------- */
 
-/* ---------- Shell ---------- */
-
-.shell {
-  max-width: 1240px;
-  margin: 0 auto;
-  padding: var(--gutter);
-}
-
-.masthead {
+.cmdbar {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
+  align-items: center;
   gap: 1rem;
+  background: var(--amber);
+  color: #000;
+  padding: 0.25rem 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   flex-wrap: wrap;
-  padding-bottom: 1rem;
-  border-bottom: 1px solid var(--rule);
-  margin-bottom: var(--gutter);
 }
 
-.wordmark {
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: 2rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+.cmdbar .ticker { font-weight: 700; letter-spacing: 0.12em; }
+.cmdbar .spacer { margin-left: auto; }
+.cmdbar .field { color: #2a1c00; }
+
+/* ---------- Layout ---------- */
+
+.screen {
+  padding: 0.4rem;
+  display: grid;
+  gap: 0.4rem;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 3fr) minmax(0, 4fr);
+  align-items: start;
 }
 
-.wordmark span {
-  color: var(--ink-faint);
-  font-weight: 400;
-  margin-left: 0.6rem;
-  font-size: 1rem;
-  letter-spacing: 0.02em;
-}
+.col { display: grid; gap: 0.4rem; min-width: 0; }
 
 /* ---------- Panels ---------- */
 
-.grid {
-  display: grid;
-  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
-  gap: var(--gutter);
-  align-items: start;
-}
+.panel { border: 1px solid var(--rule); background: var(--panel); min-width: 0; }
 
-.stack {
-  display: grid;
-  gap: var(--gutter);
-}
-
-.panel {
-  background: var(--slate-800);
-  border: 1px solid var(--rule);
-  border-radius: var(--radius);
-  padding: 1.25rem;
-}
-
-.panel-head {
+.panel > header {
+  background: var(--cyan);
+  color: #000;
+  padding: 0.1rem 0.45rem;
+  font-weight: 700;
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
   display: flex;
-  align-items: baseline;
   justify-content: space-between;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
-}
-
-.panel-head h2 {
-  font-size: 1.15rem;
-  color: var(--ink);
-}
-
-.panel-note {
-  color: var(--ink-faint);
-  font-size: 0.82rem;
-}
-
-/* ---------- Gauge ---------- */
-
-.gauge-panel {
-  display: grid;
-  justify-items: center;
   gap: 0.5rem;
 }
 
-.gauge {
-  width: 100%;
-  max-width: 320px;
-}
+/* Amber header marks a panel that acts rather than reports. */
+.panel.action > header { background: var(--amber); }
 
-.gauge-track {
-  stroke: var(--slate-600);
-}
+.panel > .body { padding: 0.45rem; }
 
-.gauge-value {
-  transition: stroke-dashoffset 700ms cubic-bezier(0.2, 0.7, 0.2, 1);
-}
+/* ---------- Key/value rows ---------- */
 
-@media (prefers-reduced-motion: reduce) {
-  .gauge-value {
-    transition: none;
-  }
-}
+.kv { display: grid; grid-template-columns: 1fr auto; gap: 0.15rem 0.75rem; }
+.kv dt { color: var(--amber-dim); text-transform: uppercase; letter-spacing: 0.04em; }
+.kv dd { margin: 0; text-align: right; color: var(--value); }
 
-.gauge-readout {
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: 4.5rem;
+/* ---------- Big readout ---------- */
+
+.readout { display: flex; align-items: baseline; gap: 0.5rem; }
+
+.readout .n {
+  font-size: 40px;
   font-weight: 700;
   line-height: 1;
+  letter-spacing: -0.02em;
 }
 
-.gauge-scale {
-  fill: var(--ink-faint);
-  font-family: 'IBM Plex Sans', sans-serif;
-  font-size: 0.7rem;
+.readout .unit { color: var(--amber-dim); font-size: 10px; letter-spacing: 0.1em; }
+
+/* Horizontal band scale: where the index sits on 0-1000. A terminal
+   shows a level, not a dial. */
+.scale { margin-top: 0.4rem; }
+
+.scale-track {
+  position: relative;
+  height: 10px;
+  border: 1px solid var(--rule-bright);
+  background: repeating-linear-gradient(
+    90deg, transparent 0 24px, var(--rule) 24px 25px
+  );
 }
 
-.state-line {
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: 1.35rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
+.scale-fill { position: absolute; inset: 0 auto 0 0; opacity: 0.5; }
+
+.scale-marker {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  background: var(--value);
 }
 
-/* ---------- Component breakdown ---------- */
-
-.bars {
-  display: grid;
-  gap: 0.6rem;
+.scale-legend {
+  display: flex;
+  justify-content: space-between;
+  color: var(--grey);
+  font-size: 9.5px;
+  margin-top: 0.1rem;
 }
+
+/* ---------- Tables ---------- */
+
+table.grid { width: 100%; border-collapse: collapse; }
+
+table.grid th {
+  text-align: right;
+  color: var(--amber-dim);
+  font-weight: 400;
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--rule);
+  padding: 0.1rem 0.3rem;
+}
+
+table.grid th:first-child, table.grid td:first-child { text-align: left; }
+
+table.grid td {
+  text-align: right;
+  padding: 0.08rem 0.3rem;
+  color: var(--value);
+  white-space: nowrap;
+}
+
+table.grid tr.bid td.px { color: var(--up); }
+table.grid tr.ask td.px { color: var(--down); }
+table.grid tr.spread td { color: var(--amber-dim); border-block: 1px solid var(--rule); }
+
+/* Depth bars sit behind the numbers rather than beside them, so the
+   shape of the book reads without spending a column on it. */
+td.depth { position: relative; }
+td.depth .bar { position: absolute; inset: 0 auto 0 0; opacity: 0.18; }
+td.depth span { position: relative; }
+
+/* ---------- Component bars ---------- */
+
+.bars { display: grid; gap: 0.12rem; }
 
 .bar-row {
   display: grid;
-  grid-template-columns: 8.5rem 1fr 3rem;
+  grid-template-columns: 7.5rem 1fr 2.6rem;
   align-items: center;
-  gap: 0.75rem;
-  font-size: 0.86rem;
+  gap: 0.4rem;
 }
 
-.bar-label {
-  color: var(--ink-dim);
-}
+.bar-row .lbl { color: var(--amber-dim); text-transform: uppercase; font-size: 10px; }
+.bar-row .track { height: 7px; background: #16130c; border: 1px solid var(--rule); }
+.bar-row .fill { height: 100%; background: var(--amber); }
+.bar-row .val { text-align: right; color: var(--value); }
+.bar-row .absent { color: var(--grey); font-size: 10px; }
 
-.bar-track {
-  height: 6px;
-  background: var(--slate-600);
-  border-radius: 999px;
-  overflow: hidden;
-}
+/* ---------- Sparkline ---------- */
 
-.bar-fill {
-  height: 100%;
-  background: var(--nominal);
-  border-radius: 999px;
-}
-
-.bar-figure {
-  text-align: right;
-  color: var(--ink-dim);
-}
-
-.bar-absent {
-  color: var(--ink-faint);
-  font-style: italic;
-}
-
-/* ---------- Definition rows ---------- */
-
-.rows {
-  display: grid;
-  gap: 0.55rem;
-}
-
-.row {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  align-items: baseline;
-  font-size: 0.9rem;
-}
-
-.row dt {
-  color: var(--ink-dim);
-}
-
-.row dd {
-  margin: 0;
-  text-align: right;
-}
+.spark { width: 100%; height: 46px; display: block; }
 
 /* ---------- Forms ---------- */
 
-.field {
-  display: grid;
-  gap: 0.3rem;
-  margin-bottom: 0.9rem;
+.form { display: grid; gap: 0.3rem; }
+
+.form label {
+  color: var(--amber-dim);
+  text-transform: uppercase;
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
 }
 
-.field label {
-  font-size: 0.85rem;
-  color: var(--ink-dim);
-}
-
-input,
-select {
-  background: var(--slate-900);
-  border: 1px solid var(--rule);
-  border-radius: var(--radius);
-  color: var(--ink);
+input, select {
+  background: #000;
+  border: 1px solid var(--rule-bright);
+  color: var(--value);
   font: inherit;
   font-variant-numeric: tabular-nums;
-  padding: 0.5rem 0.65rem;
+  padding: 0.2rem 0.35rem;
   width: 100%;
+  border-radius: 0;
 }
 
-input:disabled {
-  color: var(--ink-faint);
-}
+input:focus { border-color: var(--cyan); }
+input:disabled { color: var(--grey); }
 
-.side-toggle {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.5rem;
-}
+.sidebtns { display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem; }
 
-.side-toggle button {
-  background: var(--slate-900);
-  border: 1px solid var(--rule);
-  color: var(--ink-dim);
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: 1.05rem;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  padding: 0.5rem;
-  border-radius: var(--radius);
-  cursor: pointer;
-}
-
-.side-toggle button[aria-pressed='true'] {
-  border-color: var(--nominal);
-  color: var(--ink);
-  background: color-mix(in srgb, var(--nominal) 14%, var(--slate-900));
-}
-
-button.primary {
-  background: var(--nominal);
-  border: 1px solid var(--nominal);
-  border-radius: var(--radius);
-  color: var(--slate-900);
-  cursor: pointer;
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: 1.1rem;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  padding: 0.6rem 1rem;
-  width: 100%;
-}
-
-button.primary:disabled {
-  background: var(--slate-600);
-  border-color: var(--rule);
-  color: var(--ink-faint);
-  cursor: not-allowed;
-}
-
-button.secondary {
-  background: transparent;
-  border: 1px solid var(--rule);
-  border-radius: var(--radius);
-  color: var(--ink-dim);
-  cursor: pointer;
+.sidebtns button {
+  background: #000;
+  border: 1px solid var(--rule-bright);
+  color: var(--amber-dim);
   font: inherit;
-  padding: 0.45rem 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  padding: 0.25rem;
+  cursor: pointer;
+  border-radius: 0;
+  text-transform: uppercase;
 }
 
-button.secondary:hover:not(:disabled) {
-  border-color: var(--ink-faint);
-  color: var(--ink);
+.sidebtns button[aria-pressed='true'][data-side='buy'] { background: var(--up); border-color: var(--up); color: #000; }
+.sidebtns button[aria-pressed='true'][data-side='sell'] { background: var(--down); border-color: var(--down); color: #000; }
+
+button.go {
+  background: var(--amber);
+  border: 1px solid var(--amber);
+  color: #000;
+  font: inherit;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.35rem;
+  width: 100%;
+  cursor: pointer;
+  border-radius: 0;
 }
 
-button.secondary:disabled {
-  color: var(--ink-faint);
-  cursor: not-allowed;
+button.go:disabled { background: #1a160e; border-color: var(--rule-bright); color: var(--grey); cursor: not-allowed; }
+
+button.fn {
+  background: #000;
+  border: 1px solid var(--rule-bright);
+  color: var(--amber);
+  font: inherit;
+  padding: 0.2rem 0.5rem;
+  cursor: pointer;
+  border-radius: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
+
+button.fn:hover:not(:disabled) { background: var(--amber); color: #000; }
+button.fn:disabled { color: var(--grey); border-color: var(--rule); cursor: not-allowed; }
 
 /* ---------- Messages ---------- */
 
-.notice {
-  border-left: 2px solid var(--rule);
-  padding: 0.6rem 0.85rem;
-  font-size: 0.88rem;
-  background: var(--slate-700);
-  border-radius: 0 var(--radius) var(--radius) 0;
+.msg { padding: 0.25rem 0.4rem; border-left: 2px solid var(--rule-bright); margin-top: 0.35rem; }
+.msg.err { border-left-color: var(--down); color: var(--down); }
+.msg.ok { border-left-color: var(--up); color: var(--up); }
+.msg.warn { border-left-color: var(--amber); color: var(--amber); }
+.msg.info { border-left-color: var(--cyan); color: var(--amber-dim); }
+
+.empty { color: var(--grey); }
+
+/* Marks any number the chain does not back. */
+.indicative {
+  color: var(--grey);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
-.notice.bad {
-  border-left-color: var(--critical);
-}
+/* ---------- Status strip ---------- */
 
-.notice.good {
-  border-left-color: var(--nominal);
-}
-
-.notice.warn {
-  border-left-color: var(--elevated);
-}
-
-.empty {
-  color: var(--ink-faint);
-  font-size: 0.9rem;
-}
-
-/* ---------- Verdict (hedge) ---------- */
-
-.verdict {
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: 1.5rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-
-.checks {
-  display: grid;
-  gap: 0.4rem;
-  margin-top: 0.75rem;
-  font-size: 0.88rem;
-}
-
-.check {
-  display: grid;
-  grid-template-columns: 1.2rem 1fr;
-  gap: 0.5rem;
-  align-items: start;
-}
-
-.check-mark {
-  font-weight: 600;
-}
-
-.foot {
-  margin-top: var(--gutter);
-  padding-top: 1rem;
+.statusbar {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
   border-top: 1px solid var(--rule);
-  color: var(--ink-faint);
-  font-size: 0.82rem;
+  padding: 0.2rem 0.6rem;
+  color: var(--amber-dim);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
 
-@media (max-width: 900px) {
-  .grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .gauge-readout {
-    font-size: 3.5rem;
-  }
+.statusbar .dot { color: var(--up); }
+.statusbar .dot.off { color: var(--down); }
+
+@media (max-width: 1100px) {
+  .screen { grid-template-columns: minmax(0, 1fr); }
 }
