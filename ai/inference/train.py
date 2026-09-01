@@ -92,6 +92,26 @@ def _fetch_from_gateway(base_url: str, limit: int = 5000) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _normalise_columns(raw: pd.DataFrame) -> pd.DataFrame:
+    """The gateway returns camelCase (its db.ts maps SQL rows into
+    TypeScript-style names) while a CSV dumped straight from MySQL is
+    snake_case. Normalising once here means callers do not have to care
+    which source they used. Shared with inference/experiment.py."""
+    return raw.rename(
+        columns={
+            "baseFee": "base_fee",
+            "mempoolPressure": "mempool_pressure",
+            "feeMomentum": "fee_momentum",
+            "gasVolatility": "gas_volatility",
+            "dexActivity": "dex_activity",
+            "thetanutsIv": "thetanuts_iv",
+            "thetanutsSkew": "thetanuts_skew",
+            "blockNumber": "block_number",
+            "blockTimestamp": "block_timestamp",
+        }
+    )
+
+
 def _build_features(raw: pd.DataFrame, horizon: int) -> pd.DataFrame:
     """Turns raw snapshots into the exact FEATURE_NAMES the forecaster
     expects, plus the target it should predict.
@@ -105,22 +125,7 @@ def _build_features(raw: pd.DataFrame, horizon: int) -> pd.DataFrame:
     The target is the score `horizon` rows ahead, so the last `horizon`
     rows are dropped (their future has not happened yet).
     """
-    # The gateway returns camelCase (its db.ts maps SQL rows into
-    # TypeScript-style names) while a CSV dumped straight from MySQL is
-    # snake_case. Normalize once here so either source works, rather
-    # than making the caller care which one they used.
-    raw = raw.rename(
-        columns={
-            "baseFee": "base_fee",
-            "mempoolPressure": "mempool_pressure",
-            "feeMomentum": "fee_momentum",
-            "gasVolatility": "gas_volatility",
-            "dexActivity": "dex_activity",
-            "thetanutsIv": "thetanuts_iv",
-            "thetanutsSkew": "thetanuts_skew",
-            "blockNumber": "block_number",
-        }
-    )
+    raw = _normalise_columns(raw)
 
     required = {"score", "base_fee", "utilization", "mempool_pressure", "gas_volatility"}
     missing = required - set(raw.columns)
