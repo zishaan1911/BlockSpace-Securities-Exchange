@@ -193,3 +193,28 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 venv/bin/pytest
   update history) and `POST /publish` (the on-chain write) are
   deliberately separate endpoints — a publish should never happen as a
   side effect of a read/compute loop.
+
+## Evaluating the model honestly
+
+`beats_baseline` is a boolean and a low bar. Run
+`python -m inference.evaluate --from-gateway http://localhost:3000
+--compare-horizons` and read the **constant mean** row, not the
+no-change row.
+
+EGSI is strongly mean-reverting, which makes "predict no change" an easy
+baseline to beat — a model can post a 30% skill score against it while
+doing nothing cleverer than regressing toward the average. Measured on
+real data (2,550 readings, Aug-Sep 2026), model MAE stayed flat at
+~49 EGSI points across horizons of 50, 100, 170 and 300 rows. A genuine
+forecaster degrades as the horizon lengthens; flat error across a 6x
+range of horizons is a signature of predicting the mean rather than the
+trajectory.
+
+Band coverage measured 56-58% against the 80% the quantile band is
+trained for, so **the confidence figure displayed in the UI is
+overstated**. Widening the quantiles or calibrating the band on held-out
+data is the fix; neither is done yet.
+
+Direction was the genuinely strong result: 72-77% correct sign of move,
+well above a coin flip, and useful for a trader choosing a side even
+when the magnitude is unreliable.

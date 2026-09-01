@@ -341,3 +341,19 @@ def test_evaluate_reports_every_metric_the_report_needs():
         assert key in metrics, f"missing metric: {key}"
     assert 0.0 <= metrics["band_coverage"] <= 1.0
     assert 0.0 <= metrics["directional_accuracy"] <= 1.0
+
+
+def test_evaluate_reports_the_climatology_baseline():
+    """The constant-mean baseline is what distinguishes forecasting from
+    mean-reversion on a mean-reverting series; it must always be
+    reported, not just the flattering no-change one."""
+    from inference.evaluate import evaluate
+
+    X, y = _synthetic_dataset(n=600)
+    df = X.copy()
+    df["target"] = y
+    metrics = evaluate(df, horizon=10)
+
+    assert "climatology_mae" in metrics
+    assert "skill_vs_climatology" in metrics
+    assert metrics["climatology_mae"] > 0

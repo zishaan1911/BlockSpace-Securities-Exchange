@@ -86,6 +86,16 @@ def evaluate(df: pd.DataFrame, horizon: int, test_fraction: float = 0.2) -> dict
     # Baseline 2: trailing mean of the last 5 observations.
     scores = list(df["last_score"])
     naive_ma = [moving_average(scores[max(0, split + i - 5) : split + i + 1]) for i in range(len(test_df))]
+    # Baseline 3: climatology — always predict the training-set mean.
+    #
+    # This is the baseline that actually matters on a mean-reverting
+    # series. "Predict no change" is easy to beat here simply because the
+    # series pulls back toward its average, so a model can post a large
+    # skill score against it while doing nothing more clever than
+    # regressing to the mean. Beating climatology is what distinguishes a
+    # forecast from a constant.
+    climatology_value = statistics.fmean(y_train)
+    naive_climatology = [climatology_value] * len(test_df)
 
     model = train(X_train, y_train, X_test, y_test, naive_last)
     median = model.median.predict(X_test).tolist()
@@ -95,6 +105,7 @@ def evaluate(df: pd.DataFrame, horizon: int, test_fraction: float = 0.2) -> dict
     model_mae = mean_absolute_error(actual, median)
     last_mae = mean_absolute_error(actual, naive_last)
     ma_mae = mean_absolute_error(actual, naive_ma)
+    climatology_mae = mean_absolute_error(actual, naive_climatology)
 
     # Coverage: how often the true value fell inside the band. Compared
     # against EXPECTED_COVERAGE to judge whether displayed confidence is
@@ -124,8 +135,10 @@ def evaluate(df: pd.DataFrame, horizon: int, test_fraction: float = 0.2) -> dict
         "model_rmse": _rmse(actual, median),
         "last_value_mae": last_mae,
         "moving_average_mae": ma_mae,
+        "climatology_mae": climatology_mae,
         "skill_vs_last_value": _skill_score(model_mae, last_mae),
         "skill_vs_moving_average": _skill_score(model_mae, ma_mae),
+        "skill_vs_climatology": _skill_score(model_mae, climatology_mae),
         "beats_baseline": model.beats_baseline,
         "band_coverage": coverage,
         "expected_coverage": EXPECTED_COVERAGE,
@@ -147,15 +160,25 @@ def _report(m: dict) -> None:
     print(f"  Model RMSE               {m['model_rmse']:8.2f}")
     print(f"  Baseline: no change      {m['last_value_mae']:8.2f}")
     print(f"  Baseline: 5-row average  {m['moving_average_mae']:8.2f}")
+    print(f"  Baseline: constant mean  {m['climatology_mae']:8.2f}")
     print(f"  For scale, target stdev  {m['target_stdev']:8.2f}")
 
     print("\nSkill (percent better than each baseline; negative is worse)")
     print(f"  vs no change             {m['skill_vs_last_value']:7.1f}%")
     print(f"  vs 5-row average         {m['skill_vs_moving_average']:7.1f}%")
+    print(f"  vs constant mean         {m['skill_vs_climatology']:7.1f}%   <- the one that matters")
 
-    if m["skill_vs_last_value"] < 5:
-        print("  NOTE: a single-digit skill score is a real but marginal edge.")
-        print("        It passes the gate; do not describe it as accurate.")
+    if m["climatology_mae"] < m["last_value_mae"]:
+        print("\n  This series is mean-reverting: a constant mean predicts it better")
+        print("  than 'no change' does. That makes the no-change skill score")
+        print("  flattering. Judge the model on the constant-mean row instead.")
+
+    if m["skill_vs_climatology"] < 10:
+        print("\n  WARNING: the model barely beats a constant. Most of its apparent")
+        print("           skill comes from regressing toward the mean, not from")
+        print("           forecasting. Do not describe this as predictive.")
+    elif m["skill_vs_climatology"] < 25:
+        print("\n  A modest but real edge over a constant. Defensible; not accurate.")
 
     print("\nConfidence calibration")
     print(f"  Band should contain      {m['expected_coverage'] * 100:5.0f}% of true values")
