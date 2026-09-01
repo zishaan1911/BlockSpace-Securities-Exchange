@@ -285,3 +285,59 @@ def test_refuses_when_model_files_are_missing_despite_metadata(tmp_path):
         _json.dumps({"beats_baseline": True, "feature_names": FEATURE_NAMES})
     )
     assert load_trained_model(tmp_path) is None
+
+
+# ---------------------------------------------------------------------------
+# Evaluation metrics.
+# ---------------------------------------------------------------------------
+
+
+def test_skill_score_is_positive_when_model_beats_baseline():
+    from inference.evaluate import _skill_score
+    # Model MAE 40 vs baseline 50 = 20% better.
+    assert _skill_score(40.0, 50.0) == pytest.approx(20.0)
+
+
+def test_skill_score_is_negative_when_model_is_worse():
+    from inference.evaluate import _skill_score
+    assert _skill_score(60.0, 50.0) < 0
+
+
+def test_skill_score_handles_a_zero_baseline_without_dividing_by_zero():
+    from inference.evaluate import _skill_score
+    assert _skill_score(10.0, 0.0) == 0.0
+
+
+def test_rmse_penalises_large_errors_more_than_mae():
+    from inference.baseline import mean_absolute_error
+    from inference.evaluate import _rmse
+    actual = [0.0, 0.0, 0.0, 0.0]
+    predicted = [0.0, 0.0, 0.0, 40.0]  # one big miss
+    assert _rmse(actual, predicted) > mean_absolute_error(actual, predicted)
+
+
+def test_expected_coverage_matches_the_trained_quantile_band():
+    """The calibration check is only meaningful if the expected coverage
+    is derived from the actual quantiles the model was trained on."""
+    from inference.evaluate import EXPECTED_COVERAGE
+    from inference.forecaster import QUANTILE_HIGH, QUANTILE_LOW
+    assert EXPECTED_COVERAGE == pytest.approx(QUANTILE_HIGH - QUANTILE_LOW)
+
+
+def test_evaluate_reports_every_metric_the_report_needs():
+    import pandas as pd
+    from inference.evaluate import evaluate
+
+    X, y = _synthetic_dataset(n=600)
+    df = X.copy()
+    df["target"] = y
+    metrics = evaluate(df, horizon=10)
+
+    for key in (
+        "model_mae", "model_rmse", "last_value_mae", "moving_average_mae",
+        "skill_vs_last_value", "band_coverage", "directional_accuracy",
+        "beats_baseline", "mean_band_width",
+    ):
+        assert key in metrics, f"missing metric: {key}"
+    assert 0.0 <= metrics["band_coverage"] <= 1.0
+    assert 0.0 <= metrics["directional_accuracy"] <= 1.0
