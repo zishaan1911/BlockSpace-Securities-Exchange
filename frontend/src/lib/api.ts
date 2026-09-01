@@ -61,10 +61,41 @@ export interface Forecast {
   model_version: string;
 }
 
+/** Depth from the C++ engine. Indicative: contracts/gasx owns the real
+ * book and there is no indexer to read it from, so these levels are
+ * GASX's own quote, not resting orders anyone placed. The flag rides in
+ * the payload precisely so the UI cannot forget to say so. */
+export interface BookLevel {
+  price: number;
+  quantity: number;
+  traderId: string;
+}
+
+export interface OrderBook {
+  bestBid: BookLevel | null;
+  bestAsk: BookLevel | null;
+  indicative: true;
+}
+
+export interface IndicativeQuote {
+  bid: number;
+  ask: number;
+  fairPrice: number;
+  size: number;
+  indicative: true;
+}
+
 export interface MarketResponse {
   market: MarketState;
   egsi: EgsiSnapshot | null;
   forecast: Forecast | null;
+  orderbook: OrderBook | null;
+  quote: IndicativeQuote | null;
+}
+
+export interface HistoryPoint {
+  score: number;
+  blockNumber: number;
 }
 
 export interface PreparedTransaction {
@@ -132,6 +163,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   getMarket: () => request<MarketResponse>('/api/v1/market'),
+
+  /** Recent EGSI readings for the sparkline. Fails soft: a terminal
+   * without a chart is still usable, so callers treat this as optional. */
+  getHistory: (limit = 240) =>
+    request<{ count: number; history: HistoryPoint[] }>(`/api/v1/history?limit=${limit}`),
 
   prepareOrder: (input: {
     trader: string;

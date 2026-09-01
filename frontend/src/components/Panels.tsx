@@ -15,12 +15,10 @@ export function ForecastPanel({ forecast }: { forecast: Forecast | null }) {
   if (!forecast) {
     return (
       <div className="panel">
-        <div className="panel-head">
-          <h2>Forecast</h2>
+        <header><span>Forecast</span></header>
+        <div className="body">
+          <p className="empty">No forecast. The AI service has not cycled yet.</p>
         </div>
-        <p className="empty">
-          No forecast available. The AI service needs to run a cycle before it can predict.
-        </p>
       </div>
     );
   }
@@ -36,44 +34,32 @@ export function ForecastPanel({ forecast }: { forecast: Forecast | null }) {
 
   return (
     <div className="panel">
-      <div className="panel-head">
-        <h2>Forecast</h2>
-        <span className="panel-note">{forecast.market}</span>
-      </div>
+      <header>
+        <span>Forecast</span>
+        <span>{forecast.market}</span>
+      </header>
+      <div className="body">
 
-      {isFallback && (
-        <div className="notice warn" style={{ marginBottom: '1rem' }}>
-          No forecast available yet. These numbers are placeholders.
-        </div>
-      )}
+      {isFallback && <div className="msg warn">No forecast yet. Placeholder values.</div>}
 
       {isBaseline && (
-        <div className="notice" style={{ marginBottom: '1rem' }}>
-          Statistical baseline. Gas congestion is strongly mean-reverting, so the recent
-          average predicts it better than the learned model does.
+        <div className="msg info">
+          Statistical baseline. Gas is strongly mean-reverting, so the recent average
+          predicts it better than the learned model does.
         </div>
       )}
 
-      <dl className="rows">
-        <div className="row">
-          <dt>Expected index</dt>
-          <dd className="tabular" style={{ color: bandColorVar(band), fontWeight: 600 }}>
-            {forecast.expected_egsi.toFixed(1)}
-          </dd>
-        </div>
-        <div className="row">
-          <dt>Confidence</dt>
-          <dd className="tabular">{formatConfidence(forecast.confidence)}</dd>
-        </div>
-        <div className="row">
-          <dt>Chance of passing 500</dt>
-          <dd className="tabular">{formatConfidence(forecast.p_tail_500)}</dd>
-        </div>
-        <div className="row">
-          <dt>Method</dt>
-          <dd>{isBaseline ? 'Recent mean' : forecast.model_version}</dd>
-        </div>
+      <dl className="kv" style={{ marginTop: isBaseline || isFallback ? '0.4rem' : 0 }}>
+        <dt>Expected</dt>
+        <dd style={{ color: bandColorVar(band) }}>{forecast.expected_egsi.toFixed(1)}</dd>
+        <dt>Confidence</dt>
+        <dd>{formatConfidence(forecast.confidence)}</dd>
+        <dt>P(&gt;500)</dt>
+        <dd>{formatConfidence(forecast.p_tail_500)}</dd>
+        <dt>Method</dt>
+        <dd>{isBaseline ? 'Recent mean' : forecast.model_version}</dd>
       </dl>
+      </div>
     </div>
   );
 }
@@ -83,10 +69,11 @@ export function MarketPanel({ market, nowMs }: { market: MarketState; nowMs: num
 
   return (
     <div className="panel">
-      <div className="panel-head">
-        <h2>{market.underlying}</h2>
-        <span className="panel-note">{market.marketId.slice(0, 10)}…</span>
-      </div>
+      <header>
+        <span>Contract</span>
+        <span>{market.marketId.slice(0, 10)}…</span>
+      </header>
+      <div className="body">
 
       {market.devMode && (
         <div className="notice warn" style={{ marginBottom: '1rem' }}>
@@ -94,44 +81,27 @@ export function MarketPanel({ market, nowMs }: { market: MarketState; nowMs: num
           by the gateway. Orders are disabled until they are (see blockchain/sui/README.md).
         </div>
       )}
-      {market.settled && (
-        <div className="notice" style={{ marginBottom: '1rem' }}>
-          Settled at {market.settlementPrice ?? '—'}. This market is closed to new orders.
-        </div>
-      )}
-      {market.paused && !market.settled && (
-        <div className="notice warn" style={{ marginBottom: '1rem' }}>
-          Trading is paused. Orders cannot be placed right now.
-        </div>
-      )}
+      {market.settled && <div className="msg info">Settled at {market.settlementPrice ?? '—'}. Closed.</div>}
+      {market.paused && !market.settled && <div className="msg warn">Trading paused.</div>}
       {!market.oracle.isFreshApprox && !market.settled && (
-        <div className="notice warn" style={{ marginBottom: '1rem' }}>
-          The oracle price is stale. Settlement is blocked until it updates.
-        </div>
+        <div className="msg warn">Oracle stale. Settlement blocked.</div>
       )}
 
-      <dl className="rows">
-        <div className="row">
-          <dt>Oracle price</dt>
-          <dd className="tabular">{market.oracle.hasPrice ? market.oracle.price : 'never published'}</dd>
-        </div>
-        <div className="row">
-          <dt>{market.settled ? 'Expired' : 'Expires in'}</dt>
-          <dd className="tabular">{remaining ?? 'expired'}</dd>
-        </div>
-        <div className="row">
-          <dt>Contract size</dt>
-          <dd className="tabular">×{market.contractMultiplier}</dd>
-        </div>
-        <div className="row">
-          <dt>Tick</dt>
-          <dd className="tabular">{market.tickSize}</dd>
-        </div>
-        <div className="row">
-          <dt>Margin required</dt>
-          <dd className="tabular">{(market.marginRatioBps / 100).toFixed(1)}%</dd>
-        </div>
+      <dl className="kv">
+        <dt>Underlying</dt>
+        <dd>{market.underlying}</dd>
+        <dt>Oracle</dt>
+        <dd>{market.oracle.hasPrice ? market.oracle.price : 'unpublished'}</dd>
+        <dt>{market.settled ? 'Expired' : 'Expiry'}</dt>
+        <dd>{remaining ?? 'expired'}</dd>
+        <dt>Mult</dt>
+        <dd>×{market.contractMultiplier}</dd>
+        <dt>Tick</dt>
+        <dd>{market.tickSize}</dd>
+        <dt>Margin</dt>
+        <dd>{(market.marginRatioBps / 100).toFixed(1)}%</dd>
       </dl>
+      </div>
     </div>
   );
 }

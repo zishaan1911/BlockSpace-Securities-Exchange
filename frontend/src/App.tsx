@@ -1,29 +1,35 @@
 /**
- * The market screen. One page, because there is one market
- * (ARCHITECTURE.md §12: "Product: EGSI-1H futures, single market") —
- * navigation between screens would be chrome around a single view.
+ * The terminal screen.
  *
- * Layout follows the read-then-act order a trader actually works in:
- * the index reading and what's driving it on the left, then forecast,
- * market terms, order ticket and hedge on the right.
+ * Three columns, ordered the way a trader reads: what the index is
+ * doing (left), what it is worth and where it trades (centre), what you
+ * can do about it (right). One screen, because there is one market
+ * (ARCHITECTURE.md §12) and navigation would be chrome around a single
+ * view.
+ *
+ * Density is deliberate. A terminal is scanned for a number, not
+ * browsed, so panels sit tight together and every value is on screen at
+ * once rather than behind a tab.
  */
 import { useCallback, useEffect, useState } from 'react';
 import { ConnectButton } from '@mysten/dapp-kit-react/ui';
 import { api, ApiError, type MarketResponse } from './lib/api';
-import { EgsiGauge } from './components/EgsiGauge';
+import { EgsiReadout } from './components/EgsiReadout';
+import { DepthLadder } from './components/DepthLadder';
 import { DriverBars } from './components/DriverBars';
 import { ForecastPanel, MarketPanel } from './components/Panels';
 import { OrderTicket } from './components/OrderTicket';
 import { HedgePanel } from './components/HedgePanel';
+import { timeToExpiry } from './lib/egsi';
 
-// The AI service auto-cycles on Ethereum's ~12s block time, so polling
-// much faster than this cannot surface a new reading — there is no new
-// block to have read. 5s keeps the screen within a few seconds of the
-// chain without hammering the gateway for values that have not changed.
 const POLL_MS = 5_000;
+// Long enough to show a trend, short enough to stay legible at sparkline
+// size.
+const HISTORY_POINTS = 240;
 
 export default function App() {
   const [data, setData] = useState<MarketResponse | null>(null);
+  const [history, setHistory] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
@@ -32,77 +38,93 @@ export default function App() {
       setData(await api.getMarket());
       setError(null);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Something went wrong loading the market.');
+      setError(err instanceof ApiError ? err.message : 'Gateway unreachable.');
+    }
+    // History fails soft: a terminal without a chart is still usable, so
+    // a missing database should not blank the whole screen.
+    try {
+      const { history: points } = await api.getHistory(HISTORY_POINTS);
+      setHistory(points.map((p) => p.score));
+    } catch {
+      /* leave the previous series in place */
     }
   }, []);
 
   useEffect(() => {
     void load();
-    const poll = setInterval(() => {
+    const timer = setInterval(() => {
       void load();
       setNowMs(Date.now());
     }, POLL_MS);
-    return () => clearInterval(poll);
+    return () => clearInterval(timer);
   }, [load]);
 
+  const market = data?.market ?? null;
+  const live = data !== null && error === null;
+  const expiry = market ? timeToExpiry(market.expiryMs, nowMs) : null;
+
   return (
-    <div className="shell">
-      <header className="masthead">
-        <h1 className="wordmark">
-          GASX<span>Ethereum gas futures</span>
-        </h1>
+    <>
+      <div className="cmdbar">
+        <span className="ticker">GASX</span>
+        <span className="field">EGSI-1H</span>
+        <span className="field">Ethereum gas futures</span>
+        {market && <span className="field">Exp {expiry ?? 'expired'}</span>}
+        <span className="spacer" />
         <ConnectButton />
-      </header>
+      </div>
 
       {error && !data && (
-        <div className="notice bad">
-          {error} Start the gateway with <code>npm run dev</code> in <code>api/</code>, then reload.
+        <div className="msg err" style={{ margin: '0.4rem' }}>
+          {error} Start it with <code>npm run dev</code> in <code>api/</code>.
         </div>
       )}
 
-      {!error && !data && <p className="empty">Loading the market…</p>}
+      {!error && !data && <p className="empty" style={{ padding: '0.6rem' }}>Connecting…</p>}
 
-      {data && (
+      {data && market && (
         <>
-          {error && (
-            <div className="notice warn" style={{ marginBottom: 'var(--gutter)' }}>
-              {error} Showing the last reading received.
-            </div>
-          )}
+          {error && <div className="msg warn" style={{ margin: '0.4rem' }}>{error} Showing last values.</div>}
 
-          <div className="grid">
-            <div className="stack">
+          <div className="screen">
+            <div className="col">
+              <EgsiReadout
+                score={data.egsi?.score ?? null}
+                blockNumber={data.egsi?.block_number ?? null}
+                history={history}
+              />
               <div className="panel">
-                <div className="panel-head">
-                  <h2>Gas Stress Index</h2>
-                  <span className="panel-note">
-                    {data.egsi ? `block ${data.egsi.block_number}` : 'no reading'}
-                  </span>
+                <header><span>Index components</span></header>
+                <div className="body">
+                  <DriverBars components={data.egsi?.components ?? null} />
                 </div>
-                <EgsiGauge score={data.egsi?.score ?? null} />
-              </div>
-
-              <div className="panel">
-                <div className="panel-head">
-                  <h2>What's driving it</h2>
-                </div>
-                <DriverBars components={data.egsi?.components ?? null} />
               </div>
             </div>
 
-            <div className="stack">
+            <div className="col">
+              <DepthLadder book={data.orderbook} quote={data.quote} />
               <ForecastPanel forecast={data.forecast} />
-              <MarketPanel market={data.market} nowMs={nowMs} />
-              <OrderTicket market={data.market} onFilled={load} />
+              <MarketPanel market={market} nowMs={nowMs} />
+            </div>
+
+            <div className="col">
+              <OrderTicket market={market} onFilled={load} />
               <HedgePanel egsiLevel={data.egsi?.score ?? null} />
             </div>
           </div>
         </>
       )}
 
-      <footer className="foot">
-        Futures settle on Sui. Hedges trade on Thetanuts, on Base mainnet, with real funds.
-      </footer>
-    </div>
+      <div className="statusbar">
+        <span>
+          <span className={live ? 'dot' : 'dot off'}>●</span> {live ? 'Live' : 'Stale'}
+        </span>
+        <span>Poll {POLL_MS / 1000}s</span>
+        <span>History {history.length}</span>
+        {market && <span>{market.settled ? 'Settled' : market.paused ? 'Paused' : 'Open'}</span>}
+        {market && <span>Oracle {market.oracle.isFreshApprox ? 'fresh' : 'stale'}</span>}
+        <span style={{ marginLeft: 'auto' }}>Settlement Sui · Hedge Thetanuts/Base</span>
+      </div>
+    </>
   );
 }
