@@ -31,6 +31,11 @@ jobs:
             blockchain/sui/package-lock.json
             api/package-lock.json
 
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libnode-dev
+
       - name: Run TypeScript tests
         run: bash scripts/test-all.sh typescript
 
@@ -105,4 +110,3 @@ jobs:
 
       - name: Run Move tests
         run: bash scripts/test-all.sh move
-        
