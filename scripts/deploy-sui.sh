@@ -4,8 +4,9 @@
 # oracle, then writes the resulting object IDs into the adapters' .env
 # files so the stack switches off dev-market mode.
 #
-#   ./scripts/deploy-sui.sh              # publish to the active network
-#   ./scripts/deploy-sui.sh --dry-run    # show what it would do
+#   ./scripts/deploy-sui.sh                      # publish to the active network
+#   ./scripts/deploy-sui.sh --dry-run            # show what it would do
+#   ./scripts/deploy-sui.sh --collateral=0x..::usdc::USDC
 #
 # This spends gas. On testnet that is free from the faucet; if your
 # active environment is mainnet the script refuses unless you pass
@@ -18,11 +19,19 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DRY_RUN=0
 ALLOW_MAINNET=0
+# Market<C> and MarginAccount<C> are generic over the collateral coin,
+# and C is fixed when the market is created -- changing it later means
+# deploying a new market, not editing config. ARCHITECTURE.md §5 calls
+# for USDC; SUI is the default here only because a faucet address
+# already holds it, so the full path works without first sourcing test
+# USDC. Override with --collateral <type> to do it properly.
+COLLATERAL="0x2::sui::SUI"
 
 for arg in "$@"; do
   case "$arg" in
     --dry-run)       DRY_RUN=1 ;;
     --allow-mainnet) ALLOW_MAINNET=1 ;;
+    --collateral=*)  COLLATERAL="${arg#*=}" ;;
     -h|--help)       sed -n '2,16p' "$0"; exit 0 ;;
     *) echo "unknown option: $arg" >&2; exit 1 ;;
   esac
@@ -45,6 +54,7 @@ ACTIVE_ADDR="$(sui client active-address 2>/dev/null || true)"
 [ -n "$ACTIVE_ADDR" ] || die "no active Sui address. Try: sui client new-address ed25519"
 
 ok "network: $ACTIVE_ENV"
+ok "collateral: $COLLATERAL"
 ok "address: $ACTIVE_ADDR"
 
 if [ "$ACTIVE_ENV" = "mainnet" ] && [ "$ALLOW_MAINNET" -eq 0 ]; then
@@ -63,7 +73,8 @@ if [ "$DRY_RUN" -eq 1 ]; then
   echo "  1. sui client publish contracts/gasx"
   echo "  2. call gasx::oracle::create_oracle  (publisher=$ACTIVE_ADDR)"
   echo "  3. call gasx::market::create_market  (EGSI-1H)"
-  echo "  4. write PACKAGE/MARKET/ORACLE ids into blockchain/sui/.env and ai/.env"
+  echo "  4. write PACKAGE/MARKET/ORACLE ids and the collateral type into"
+  echo "     blockchain/sui/.env and ai/.env"
   exit 0
 fi
 
@@ -153,6 +164,10 @@ set_env "$SUI_ENV" GASX_SUI_NETWORK "$ACTIVE_ENV"
 set_env "$SUI_ENV" GASX_SUI_PACKAGE_ID "$PACKAGE_ID"
 set_env "$SUI_ENV" GASX_SUI_MARKET_ID "$MARKET_ID"
 set_env "$SUI_ENV" GASX_SUI_ORACLE_ID "$ORACLE_ID"
+# Without this the gateway refuses to start: the adapter needs all five
+# values unless dev-market mode is on. Omitting it left a half-written
+# config that failed only at startup.
+set_env "$SUI_ENV" GASX_SUI_COLLATERAL_COIN_TYPE "$COLLATERAL"
 # This is what actually turns dev-market mode off.
 set_env "$SUI_ENV" GASX_SUI_DEV_MARKET "false"
 ok "blockchain/sui/.env updated (dev market OFF)"
@@ -170,11 +185,16 @@ $(printf '\033[1;32mDeployed.\033[0m')
   package  $PACKAGE_ID
   market   $MARKET_ID
   oracle   $ORACLE_ID
+  coin     $COLLATERAL
   admin    $ADMIN_CAP   <- keep this; it gates pause and settlement
 
 The AdminCap is owned by $ACTIVE_ADDR. It is not written to any .env
 because nothing in the running stack needs it — it is used from the CLI
 for admin actions, and it should not sit in a file the services read.
+
+NOTE: this market expires in one hour ($(date -d "@$((EXPIRY_MS / 1000))" +%H:%M 2>/dev/null || echo "1h")).
+Re-run this script for a fresh market if you need one later; it is cheap
+on testnet.
 
 Restart the gateway to pick this up:
 

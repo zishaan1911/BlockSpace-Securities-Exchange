@@ -68,6 +68,21 @@ It refuses to run against mainnet without `--allow-mainnet`, since
 publishing there costs real SUI, and it checks for gas up front rather
 than failing halfway through.
 
+**Collateral coin.** `Market<C>` and `MarginAccount<C>` are generic over
+the collateral type, and `C` is fixed when the market is created —
+changing it later means deploying a new market, not editing config. The
+script defaults to `0x2::sui::SUI` because a faucet address already
+holds it, so the full path works without first sourcing test USDC.
+ARCHITECTURE.md §5 calls for USDC; to do it that way, pass the type
+explicitly:
+
+```bash
+./scripts/deploy-sui.sh --collateral=0x...::usdc::USDC
+```
+
+**The market expires one hour after creation.** Re-run the script for a
+fresh one if the demo is later than that; it is cheap on testnet.
+
 The `AdminCap` minted on publish is deliberately **not** written to any
 `.env`. Nothing in the running stack needs it — it gates pause and
 settlement from the CLI — and it should not sit in a file the services
