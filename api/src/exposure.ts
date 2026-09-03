@@ -37,11 +37,20 @@ export interface ExposureConfig {
   /** Absolute ETH-beta notional (USD) above which a hedge is
    * considered warranted (ARCHITECTURE.md §10's "breached threshold"). */
   hedgeThresholdNotional: number;
-  /** How many option contracts to request in a hedge RFQ. Fixed rather
-   * than sized from the exposure: ARCHITECTURE.md §8 calls for a "small
-   * fixed cap" on autonomous activity, and a fixed size is far easier to
-   * reason about for a first implementation than a dynamically-sized one
-   * whose sizing formula would itself need validating. */
+  /**
+   * How many option contracts to request in a hedge RFQ.
+   *
+   * Fractional is allowed and supported by the Thetanuts SDK, which
+   * converts to the on-chain format using the collateral token's
+   * decimals. A minimum of 0.01 is enforced in config: below that the
+   * premium rounds to nothing useful, and a zero or negative size would
+   * produce an RFQ no market maker can quote.
+   *
+   * Fixed rather than sized from the exposure: ARCHITECTURE.md §8 calls
+   * for a "small fixed cap" on autonomous activity, and a fixed size is
+   * easier to reason about than a sizing formula that would itself need
+   * validating.
+   */
   hedgeContracts: number;
   /** Minutes market makers get to respond to a hedge RFQ. */
   offerDeadlineMinutes: number;

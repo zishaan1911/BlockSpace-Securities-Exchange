@@ -73,7 +73,11 @@ export function loadGatewayConfig(): GatewayConfig {
       // placeholder, not a derived figure.
       ethBeta: readEnvFloat('GASX_API_ETH_BETA', 0.5),
       hedgeThresholdNotional: readEnvInt('GASX_API_HEDGE_THRESHOLD_NOTIONAL', 5000),
-      hedgeContracts: readEnvInt('GASX_API_HEDGE_CONTRACTS', 1),
+      // Float, not int: the Thetanuts SDK accepts fractional contract
+      // sizes and converts them using the collateral token's decimals,
+      // so a small hedge is a real option rather than being rounded to
+      // zero or forced up to a whole contract.
+      hedgeContracts: Math.max(0.01, readEnvFloat('GASX_API_HEDGE_CONTRACTS', 1)),
       offerDeadlineMinutes: readEnvInt('GASX_API_HEDGE_OFFER_DEADLINE_MINUTES', 10),
       hedgeExpiryHours: readEnvInt('GASX_API_HEDGE_EXPIRY_HOURS', 24),
     },

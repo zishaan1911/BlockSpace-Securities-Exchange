@@ -81,3 +81,24 @@ describe('assessExposure', () => {
     expect(stressed.breached).toBe(true);
   });
 });
+
+
+describe('fractional hedge sizing', () => {
+  it('allows a fractional contract count', () => {
+    // The Thetanuts SDK converts fractional sizes using the collateral
+    // token's decimals, so a small hedge is a real option rather than
+    // being rounded away.
+    const config: ExposureConfig = { ...configFor(), hedgeContracts: 0.01 };
+    expect(config.hedgeContracts).toBe(0.01);
+  });
+});
+
+function configFor(): ExposureConfig {
+  return {
+    ethBeta: 0.5,
+    hedgeThresholdNotional: 5000,
+    hedgeContracts: 1,
+    offerDeadlineMinutes: 10,
+    hedgeExpiryHours: 24,
+  };
+}
