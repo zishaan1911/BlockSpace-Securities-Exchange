@@ -5,6 +5,7 @@
 | `bootstrap.sh` | installs every dependency and builds the project on a fresh machine |
 | `test-all.sh` | runs every test suite: Move, C++, Python, and the three TypeScript packages |
 | `deploy-sui.sh` | publishes contracts/gasx, creates the market + oracle, and turns dev-market mode off |
+| `new-hedge-wallet.mjs` | generates a fresh, isolated wallet for autonomous hedging |
 | `db-export.sh` | dumps the GASX database for transfer to another machine |
 | `db-import.sh` | restores a dump, replacing or merging with what is already there |
 
@@ -87,6 +88,39 @@ The `AdminCap` minted on publish is deliberately **not** written to any
 `.env`. Nothing in the running stack needs it — it gates pause and
 settlement from the CLI — and it should not sit in a file the services
 read.
+
+## The hedge wallet
+
+ARCHITECTURE.md §8 requires the hedge wallet be "isolated from user
+funds; Base + [ETH, USDC] only". The tempting shortcut is to reuse an
+existing wallet, and that quietly breaks the guarantee: an agent
+authorised to spend from a wallet can spend everything in it, and
+`MAX_HEDGE_NOTIONAL` is enforced by the gateway rather than by the
+chain. A separate wallet holding only what a hedge needs is what makes
+the cap real — the balance is the actual backstop.
+
+```bash
+node scripts/new-hedge-wallet.mjs
+```
+
+Generates a keypair and prints it once. It never touches the network,
+never writes the key anywhere, and cannot fund anything. Put the key in
+`blockchain/thetanuts/.env` and fund the address on Base mainnet.
+
+Find out what a hedge actually costs before sending anything — a quote
+request costs only gas, and no market maker is paid unless a quote is
+settled, which this build never does:
+
+```bash
+curl -s -X POST localhost:3000/api/v1/hedge/evaluate \
+  -H 'content-type: application/json' \
+  -d '{"netContracts": 10, "egsiLevel": 300}'
+```
+
+The `quotedNotional` in the response is the real premium being asked.
+
+Thetanuts has no testnet, so Base mainnet is the only option. This is
+the one part of GASX that spends real money.
 
 ## Moving collected EGSI history between machines
 
