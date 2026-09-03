@@ -61,11 +61,43 @@ def test_no_model_loaded_returns_fallback():
     assert result == FALLBACK_FORECAST
 
 
-def test_model_that_failed_baseline_check_is_not_considered_loaded():
-    fake_model = TrainedModel(median=MagicMock(), low=MagicMock(), high=MagicMock(), beats_baseline=False)
-    forecaster = Forecaster(fake_model)
-    assert not forecaster.is_model_loaded
-    assert forecaster.predict({name: 0.0 for name in FEATURE_NAMES}) == FALLBACK_FORECAST
+def test_an_unvalidated_model_is_served_but_labelled_as_such():
+    """A model that failed its baseline gate can still be served (see
+    config.serve_unvalidated_model), but the label must follow it out to
+    the UI so nobody reads it as a validated forecast."""
+    median = MagicMock(); median.predict.return_value = np.array([500.0])
+    low = MagicMock(); low.predict.return_value = np.array([450.0])
+    high = MagicMock(); high.predict.return_value = np.array([550.0])
+    forecaster = Forecaster(TrainedModel(median=median, low=low, high=high, beats_baseline=False))
+
+    assert forecaster.is_model_loaded
+    assert not forecaster.is_validated
+    assert forecaster.predict({n: 0.0 for n in FEATURE_NAMES}).model_version == "egsi-v1-unvalidated"
+
+
+def test_a_validated_model_carries_the_plain_version():
+    median = MagicMock(); median.predict.return_value = np.array([500.0])
+    low = MagicMock(); low.predict.return_value = np.array([450.0])
+    high = MagicMock(); high.predict.return_value = np.array([550.0])
+    forecaster = Forecaster(TrainedModel(median=median, low=low, high=high, beats_baseline=True))
+
+    assert forecaster.is_validated
+    assert forecaster.predict({n: 0.0 for n in FEATURE_NAMES}).model_version == "egsi-v1"
+
+
+def test_loader_refuses_an_unvalidated_model_unless_explicitly_allowed(tmp_path):
+    import json as _json
+    from inference.forecaster import load_trained_model
+    _train_and_save(tmp_path)
+    meta = _json.loads((tmp_path / "metadata.json").read_text())
+    meta["beats_baseline"] = False
+    (tmp_path / "metadata.json").write_text(_json.dumps(meta))
+
+    assert load_trained_model(tmp_path) is None
+    # Opt in, and it loads -- still flagged as not having beaten baseline.
+    loaded = load_trained_model(tmp_path, allow_unvalidated=True)
+    assert loaded is not None
+    assert loaded.beats_baseline is False
 
 
 def test_predict_falls_back_on_inference_exception():

@@ -16,7 +16,7 @@
  * against a live getObject response (no network egress to Sui RPC from
  * Claude's sandbox) — see README.md.
  */
-import type { SuiJsonRpcClient } from '@mysten/sui/jsonRpc';
+import type { SuiGrpcClient } from '@mysten/sui/grpc';
 import type { SuiAdapterConfig } from './config.js';
 import type { MarketState, OracleState } from './types.js';
 
@@ -91,40 +91,36 @@ export function parseOracleFields(
   };
 }
 
-function moveObjectFields(content: unknown, objectId: string): MoveFields {
-  if (
-    content &&
-    typeof content === 'object' &&
-    'dataType' in content &&
-    (content as { dataType: unknown }).dataType === 'moveObject' &&
-    'fields' in content
-  ) {
-    return (content as { fields: MoveFields }).fields;
+/** gRPC's `json` include returns the Move struct's fields directly,
+ * without the JSON-RPC `{dataType, fields}` envelope. */
+function moveObjectFields(json: unknown, objectId: string): MoveFields {
+  if (json && typeof json === 'object' && !Array.isArray(json)) {
+    return json as MoveFields;
   }
-  throw new Error(`object ${objectId} did not return moveObject content (was showContent requested?)`);
+  throw new Error(`object ${objectId} returned no Move fields (not found, or wrong id?)`);
 }
 
 /** Fetches and parses both Market and OracleState in one call. NOT
  * exercised against a live Sui endpoint from Claude's sandbox; see
  * README.md. */
 export async function fetchMarketState(
-  client: SuiJsonRpcClient,
+  client: SuiGrpcClient,
   config: SuiAdapterConfig,
 ): Promise<MarketState> {
+  // `include: { json: true }` returns the Move struct's fields as JSON,
+  // which is the same shape the parsers below already expect. The SDK
+  // warns that this shape can vary between API implementations and
+  // suggests parsing BCS instead for strict consistency; that would mean
+  // generating BCS types for every struct, which is more machinery than
+  // this needs while the parsers stay defensive about both string and
+  // number encodings.
   const [marketResponse, oracleResponse] = await Promise.all([
-    client.getObject({ id: config.marketId, options: { showContent: true } }),
-    client.getObject({ id: config.oracleId, options: { showContent: true } }),
+    client.core.getObject({ objectId: config.marketId, include: { json: true } }),
+    client.core.getObject({ objectId: config.oracleId, include: { json: true } }),
   ]);
 
-  if (!marketResponse.data) {
-    throw new Error(`Market object ${config.marketId} not found`);
-  }
-  if (!oracleResponse.data) {
-    throw new Error(`OracleState object ${config.oracleId} not found`);
-  }
-
-  const market = parseMarketFields(moveObjectFields(marketResponse.data.content, config.marketId));
-  const oracle = parseOracleFields(moveObjectFields(oracleResponse.data.content, config.oracleId));
+  const market = parseMarketFields(moveObjectFields(marketResponse.object?.json, config.marketId));
+  const oracle = parseOracleFields(moveObjectFields(oracleResponse.object?.json, config.oracleId));
 
   if (market.oracleId !== config.oracleId) {
     throw new Error(

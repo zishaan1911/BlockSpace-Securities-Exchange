@@ -61,7 +61,7 @@ _history = EgsiHistory(max_len=settings.egsi_history_max_len)
 # inference/train.py for how to produce a real one from accumulated
 # history.
 _MODELS_DIR = Path(__file__).resolve().parent / "models"
-_forecaster = Forecaster(load_trained_model(_MODELS_DIR))
+_forecaster = Forecaster(load_trained_model(_MODELS_DIR, settings.serve_unvalidated_model))
 # Served whenever no learned model qualifies. ARCHITECTURE.md §4: "must
 # beat naive baselines out-of-sample; otherwise ship the baseline". On
 # real data the baseline is measurably MORE accurate than the learned

@@ -6,7 +6,8 @@
  */
 
 export interface SuiAdapterConfig {
-  /** Sui fullnode JSON-RPC URL (e.g. https://fullnode.testnet.sui.io:443). */
+  /** Sui fullnode gRPC URL (e.g. https://fullnode.testnet.sui.io:443).
+   * JSON-RPC has been switched off on public fullnodes; see client.ts. */
   rpcUrl: string;
   /** 'testnet' | 'mainnet' | 'devnet' | 'localnet' — GASX's own futures
    * market may run on testnet even once Thetanuts hedging is live on

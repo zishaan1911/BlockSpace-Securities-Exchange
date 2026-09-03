@@ -8,7 +8,7 @@
  * only job is turning already-validated parameters into a signable
  * transaction.
  *
- * Every prepare* function is network-touching (SuiJsonRpcClient needs to
+ * Every prepare* function is network-touching (SuiGrpcClient needs to
  * resolve shared objects' current versions to serialize a valid
  * transaction), so none of this is a pure function the way
  * marketState.ts's parsers are — the buildXCallArgs helpers below
@@ -18,7 +18,7 @@
  * Claude's sandbox; see README.md.
  */
 import { Transaction } from '@mysten/sui/transactions';
-import type { SuiJsonRpcClient } from '@mysten/sui/jsonRpc';
+import type { SuiGrpcClient } from '@mysten/sui/grpc';
 import type { SuiAdapterConfig } from './config.js';
 import type {
   CancelOrderParams,
@@ -28,7 +28,7 @@ import type {
   PreparedTransaction,
 } from './types.js';
 
-async function serialize(tx: Transaction, sender: string, client: SuiJsonRpcClient): Promise<string> {
+async function serialize(tx: Transaction, sender: string, client: SuiGrpcClient): Promise<string> {
   tx.setSender(sender);
   // Without a client, toJSON() can't resolve tx.object(id)'s shared
   // object version or auto-select a gas coin — both needed to produce a
@@ -38,7 +38,7 @@ async function serialize(tx: Transaction, sender: string, client: SuiJsonRpcClie
 }
 
 export function preparePlaceOrder(
-  client: SuiJsonRpcClient,
+  client: SuiGrpcClient,
   config: SuiAdapterConfig,
   params: PlaceOrderParams,
 ): Promise<PreparedTransaction> {
@@ -66,7 +66,7 @@ export function preparePlaceOrder(
 }
 
 export function prepareCancelOrder(
-  client: SuiJsonRpcClient,
+  client: SuiGrpcClient,
   config: SuiAdapterConfig,
   params: CancelOrderParams,
 ): Promise<PreparedTransaction> {
@@ -83,7 +83,7 @@ export function prepareCancelOrder(
 }
 
 export function prepareOpenAccount(
-  client: SuiJsonRpcClient,
+  client: SuiGrpcClient,
   config: SuiAdapterConfig,
   params: OpenAccountParams,
 ): Promise<PreparedTransaction> {
@@ -100,7 +100,7 @@ export function prepareOpenAccount(
 }
 
 export function prepareDeposit(
-  client: SuiJsonRpcClient,
+  client: SuiGrpcClient,
   config: SuiAdapterConfig,
   params: DepositParams,
 ): Promise<PreparedTransaction> {

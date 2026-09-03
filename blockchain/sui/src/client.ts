@@ -1,27 +1,30 @@
 /**
- * Constructs a real, configured Sui client. Mysten Labs has deprecated
- * the JSON-RPC client (`SuiJsonRpcClient`, from `@mysten/sui/jsonRpc`) in
- * favor of `SuiGrpcClient`/`SuiGraphQLClient` as of the SDK version this
- * adapter is pinned to — verified by introspecting the installed
- * package's .d.ts directly, where every JSON-RPC export carries an
- * explicit `@deprecated` tag.
+ * Constructs a real, configured Sui client.
  *
- * This adapter deliberately still uses the JSON-RPC client for v1:
- * it's functionally complete (not removed, just deprecated), far more
- * widely documented than the newer gRPC-web path, and matches the
- * testnet JSON-RPC endpoint setup.md already has the user configure via
- * the Sui CLI (`sui client new-env --rpc https://fullnode.testnet.sui.io:443`).
- * Migrating to SuiGrpcClient is a reasonable follow-up once there's time
- * to verify gRPC-web works cleanly from a Node.js server context (it's
- * primarily documented for browser use) — not done here to keep this
- * iteration's scope and risk bounded.
+ * **gRPC, not JSON-RPC.** This was originally built on
+ * `SuiJsonRpcClient` as a documented, deliberate choice: the API was
+ * deprecated but functional, better documented than the alternatives,
+ * and matched the endpoint `setup.md` already configured. That bet
+ * expired. Sui has now switched JSON-RPC off on public fullnodes
+ * entirely, and every read fails with:
+ *
+ *   Method not found. JSON-RPC on public fullnodes has been deprecated.
+ *   Please migrate to gRPC or GraphQL endpoints.
+ *
+ * So this is the migration that comment anticipated. gRPC rather than
+ * GraphQL because the frontend's dapp-kit already uses `SuiGrpcClient`,
+ * which keeps one transport across the project instead of two.
+ *
+ * Note the URL differs from the JSON-RPC one: gRPC lives on
+ * `fullnode.<network>.sui.io:443` without the `/` JSON-RPC path, and
+ * `getFullnodeUrl` is not the right helper for it.
  */
-import { SuiJsonRpcClient } from '@mysten/sui/jsonRpc';
+import { SuiGrpcClient } from '@mysten/sui/grpc';
 import type { SuiAdapterConfig } from './config.js';
 
-export function createSuiClient(config: SuiAdapterConfig): SuiJsonRpcClient {
-  return new SuiJsonRpcClient({
-    url: config.rpcUrl,
+export function createSuiClient(config: SuiAdapterConfig): SuiGrpcClient {
+  return new SuiGrpcClient({
     network: config.network,
+    baseUrl: config.rpcUrl,
   });
 }

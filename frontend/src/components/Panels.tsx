@@ -30,6 +30,7 @@ export function ForecastPanel({ forecast }: { forecast: Forecast | null }) {
   // fallback really is a placeholder.
   const isBaseline = forecast.model_version.startsWith('egsi-baseline');
   const isFallback = forecast.model_version.endsWith('-fallback');
+  const isUnvalidated = forecast.model_version.endsWith('-unvalidated');
   const band = stressBand(forecast.expected_egsi);
 
   return (
@@ -41,6 +42,13 @@ export function ForecastPanel({ forecast }: { forecast: Forecast | null }) {
       <div className="body">
 
       {isFallback && <div className="msg warn">No forecast yet. Placeholder values.</div>}
+
+      {isUnvalidated && (
+        <div className="msg warn">
+          Model output, shown unvalidated. It did not beat a constant-mean baseline
+          out-of-sample, so treat the level as indicative.
+        </div>
+      )}
 
       {isBaseline && (
         <div className="msg info">
@@ -57,7 +65,7 @@ export function ForecastPanel({ forecast }: { forecast: Forecast | null }) {
         <dt>P(&gt;500)</dt>
         <dd>{formatConfidence(forecast.p_tail_500)}</dd>
         <dt>Method</dt>
-        <dd>{isBaseline ? 'Recent mean' : forecast.model_version}</dd>
+        <dd>{isBaseline ? 'Recent mean' : isUnvalidated ? 'LightGBM (unvalidated)' : forecast.model_version}</dd>
       </dl>
       </div>
     </div>

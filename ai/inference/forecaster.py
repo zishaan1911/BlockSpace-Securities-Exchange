@@ -120,6 +120,13 @@ class Forecaster:
 
     @property
     def is_model_loaded(self) -> bool:
+        return self._model is not None
+
+    @property
+    def is_validated(self) -> bool:
+        """Whether the loaded model actually beat its naive baselines.
+        A model can be served unvalidated (see config.serve_unvalidated_model);
+        this is what keeps the distinction visible rather than losing it."""
         return self._model is not None and self._model.beats_baseline
 
     def predict(self, features: dict[str, float]) -> ForecastOutput:
@@ -138,13 +145,16 @@ class Forecaster:
                 expected_egsi=_clamp_score(median),
                 confidence=_confidence_from_band(low, high),
                 p_tail_500=_p_exceeds(500.0, median, low, high),
-                model_version=MODEL_VERSION,
+                # An unvalidated model is labelled as such all the way
+                # out to the UI, so a reader is never shown a number that
+                # failed its own gate without being told.
+                model_version=MODEL_VERSION if self._model.beats_baseline else f"{MODEL_VERSION}-unvalidated",
             )
         except Exception:
             return FALLBACK_FORECAST
 
 
-def load_trained_model(models_dir) -> TrainedModel | None:
+def load_trained_model(models_dir, allow_unvalidated: bool = False) -> TrainedModel | None:
     """Loads a model saved by inference/train.py, or None if there isn't
     one to load.
 
@@ -165,7 +175,8 @@ def load_trained_model(models_dir) -> TrainedModel | None:
 
     try:
         metadata = json.loads(metadata_path.read_text())
-        if not metadata.get("beats_baseline", False):
+        beats_baseline = metadata.get("beats_baseline", False)
+        if not beats_baseline and not allow_unvalidated:
             return None
         if metadata.get("feature_names") != FEATURE_NAMES:
             # Feature set changed since training; the saved model expects
@@ -175,7 +186,7 @@ def load_trained_model(models_dir) -> TrainedModel | None:
             median=lgb.Booster(model_file=str(paths["median"])),
             low=lgb.Booster(model_file=str(paths["low"])),
             high=lgb.Booster(model_file=str(paths["high"])),
-            beats_baseline=True,
+            beats_baseline=beats_baseline,
         )
     except Exception:
         return None

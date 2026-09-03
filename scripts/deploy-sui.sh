@@ -146,6 +146,10 @@ say "Writing configuration"
 RPC_URL="$(sui client envs --json 2>/dev/null \
   | jq -r --arg e "$ACTIVE_ENV" '.[0][] | select(.alias == $e) | .rpc' || true)"
 [ -n "$RPC_URL" ] && [ "$RPC_URL" != "null" ] || RPC_URL="https://fullnode.${ACTIVE_ENV}.sui.io:443"
+# `sui client envs` reports the JSON-RPC URL, which public fullnodes no
+# longer serve. Strip any trailing path so the adapter gets the gRPC
+# base URL instead.
+RPC_URL="$(echo "$RPC_URL" | sed 's|/$||')"
 
 set_env() {   # file key value
   local file="$1" key="$2" value="$3"

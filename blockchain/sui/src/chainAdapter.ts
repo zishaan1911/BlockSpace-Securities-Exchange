@@ -1,12 +1,12 @@
 /**
  * SuiChainAdapter: the concrete ChainAdapter (types.ts) — wraps a real
- * SuiJsonRpcClient and exposes only GASX-shaped types. Composes
+ * SuiGrpcClient and exposes only GASX-shaped types. Composes
  * fetchMarketState (marketState.ts) and the prepare* functions
  * (orderTx.ts). In dev-market mode (config.devMarket, devMarket.ts) it
  * serves the synthetic market and refuses to prepare transactions,
  * because there is no on-chain market to sign for.
  */
-import type { SuiJsonRpcClient } from '@mysten/sui/jsonRpc';
+import type { SuiGrpcClient } from '@mysten/sui/grpc';
 import { createSuiClient } from './client.js';
 import type { SuiAdapterConfig } from './config.js';
 import { fetchDevMarketState } from './devMarket.js';
@@ -36,7 +36,7 @@ export class DevMarketUnavailableError extends Error {
 }
 
 export class SuiChainAdapter implements ChainAdapter {
-  private readonly client: SuiJsonRpcClient;
+  private readonly client: SuiGrpcClient;
   private readonly config: SuiAdapterConfig;
 
   constructor(config: SuiAdapterConfig) {
