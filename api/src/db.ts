@@ -37,6 +37,20 @@ export interface EgsiSnapshotRow {
   thetanutsSkew: number | null;
 }
 
+/** One OHLC bar. `time` is the bucket's start, unix seconds — the unit
+ * TradingView's lightweight-charts expects. */
+export interface Candle {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  /** Readings in the bucket. EGSI has no traded volume, so this is
+   * sample count — useful for spotting thin buckets, and honestly named
+   * rather than dressed up as volume. */
+  samples: number;
+}
+
 export interface ForecastRow {
   market: string;
   expectedEgsi: number;
@@ -80,6 +94,8 @@ export interface Database {
   /** Durable EGSI history, oldest first — what ai/inference/train.py
    * needs in order to train on real data rather than synthetic. */
   getEgsiHistory(market: string, limit: number): Promise<EgsiSnapshotRow[]>;
+  /** EGSI aggregated into OHLC candles for charting. */
+  getEgsiCandles(market: string, intervalSeconds: number, limit: number): Promise<Candle[]>;
   close(): Promise<void>;
 }
 
@@ -222,6 +238,59 @@ export class MysqlDatabase implements Database {
       thetanutsIv: r.thetanuts_iv === null ? null : Number(r.thetanuts_iv),
       thetanutsSkew: r.thetanuts_skew === null ? null : Number(r.thetanuts_skew),
     }));
+  }
+
+  /**
+   * Buckets readings into fixed intervals and derives OHLC per bucket.
+   *
+   * Done in SQL rather than in JS because the alternative is shipping
+   * every raw reading to the gateway just to fold it — at 12s cycles a
+   * day of history is ~7,000 rows for maybe 100 candles.
+   *
+   * Open and close use MySQL window functions ordered by block_number,
+   * so "first" and "last" mean first and last *by block*, not by
+   * whichever row the engine happened to return first.
+   */
+  async getEgsiCandles(market: string, intervalSeconds: number, limit: number): Promise<Candle[]> {
+    const interval = Math.max(1, Math.trunc(intervalSeconds));
+    const safeLimit = Math.max(1, Math.min(5_000, Math.trunc(limit)));
+    const [rows] = await this.pool.query(
+      `SELECT bucket AS time,
+              MIN(score) AS low,
+              MAX(score) AS high,
+              MIN(first_score) AS open,
+              MIN(last_score)  AS close,
+              COUNT(*) AS samples
+       FROM (
+         SELECT score,
+                FLOOR(block_timestamp / ?) * ? AS bucket,
+                FIRST_VALUE(score) OVER w AS first_score,
+                LAST_VALUE(score)  OVER w AS last_score
+         FROM egsi_snapshot
+         WHERE market = ?
+         WINDOW w AS (
+           PARTITION BY FLOOR(block_timestamp / ?)
+           ORDER BY block_number
+           ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+         )
+       ) AS bucketed
+       GROUP BY bucket
+       ORDER BY bucket DESC
+       LIMIT ${safeLimit}`,
+      [interval, interval, market, interval],
+    );
+    // Query descending so LIMIT keeps the most RECENT candles, then
+    // reverse: charts read oldest-first.
+    return (rows as Record<string, unknown>[])
+      .map((r) => ({
+        time: Number(r.time),
+        open: Number(r.open),
+        high: Number(r.high),
+        low: Number(r.low),
+        close: Number(r.close),
+        samples: Number(r.samples),
+      }))
+      .reverse();
   }
 
   async close(): Promise<void> {

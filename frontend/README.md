@@ -74,37 +74,48 @@ frontend/
 
 ## Design
 
-**Direction: Bloomberg Terminal.**
+**Direction: Binance.** A specific language with rules, not a generic
+dark theme:
 
-That is a specific, historically grounded language rather than a generic
-dark theme, and it has rules worth following exactly:
+- Near-black panels (`#181a20`) on a deeper page (`#0b0e11`), separated
+  by hairline borders rather than shadows.
+- Gold (`#fcd535`) is a brand accent used sparingly — wordmark, active
+  chips, primary action. **Not** body text. Body is grey; values are
+  near-white, so numbers read louder than their labels.
+- Green `#0ecb81` / red `#f6465d` carry direction and nothing else.
+- Sans-serif (Inter), not monospace. Binance reads as a consumer
+  product. Numerics still use tabular figures so columns align.
+- Chart-dominant layout: the price series gets the room, everything else
+  sits beside it.
 
-- **Amber on black.** Amber (`#ffa028`) is the primary text colour, not
-  an accent used sparingly. Cyan (`#2fb6e8`) carries section headers as
-  solid title bars with inverted black text. White-ish (`#f0ede6`) is
-  reserved for data *values*, so numbers read louder than their labels.
-  Green and red appear only for direction, never decoratively.
-- **Density over comfort.** 11.5px monospace, tight leading, three
-  columns, everything on one screen. A terminal is scanned for a number,
-  not browsed, so panels sit tight rather than breathing.
-- **Hard rectangles.** No border radius, no shadows, no gradients.
-- **Right-aligned tabular numerics** so columns compare by eye.
+This replaced a Bloomberg amber-on-black build. That was coherent, but
+it made everything shout at one volume, which is exactly what stops a
+chart from dominating. Here the palette recedes and the chart is the
+page.
 
-Monospace throughout is the one case where it is correct rather than
-decorative: column alignment is load-bearing, and the terminal idiom is
-itself monospaced. IBM Plex Mono stands in for Bloomberg's proprietary
-face — a deliberate pick, not a fallback.
+Candlesticks use TradingView's `lightweight-charts` — the engine behind
+most exchange front-ends — so crosshair, pan and zoom behave correctly
+without reimplementing them.
 
-This replaced an earlier instrument-panel design whose signature element
-was a 270-degree arc gauge. A dial is instrument vernacular; a terminal
-shows the number large, the level as a horizontal band scale with the
-500/750 boundaries marked, and the recent series as a sparkline beside
-it. Losing the gauge was the point of the change, not a casualty of it.
+### Technical indicators
 
-**Layout** follows the order a trader reads: what the index is doing
-(left), what it is worth and where it trades (centre), what you can do
-about it (right). One screen, because there is one market
-(ARCHITECTURE.md §12).
+`src/lib/indicators.ts` implements SMA, EMA, RSI, MACD and Bollinger to
+the **standard definitions**: Wilder's smoothing for RSI, EMA-based
+MACD, population standard deviation for the bands. A trader reading
+"RSI 14" expects a specific number, and a simpler formula would be
+subtly wrong in a way nobody would catch. RSI is checked against a
+hand-derived value from Wilder's own series (70.46 for those closes —
+note the commonly quoted 70.53 is from a longer version of the series
+and would fail a correct implementation).
+
+Every series returns `null` for leading positions where the indicator
+is undefined, so charts draw a gap rather than a line to zero.
+
+**These indicators were designed for traded prices.** EGSI is a computed
+congestion index. RSI on it remains a legitimate normalised momentum
+measure, but "overbought" carries none of its usual meaning because
+nobody is buying EGSI itself. The panel says so on screen rather than
+leaving it implied.
 
 ## What the screen shows
 
@@ -115,7 +126,8 @@ about it (right). One screen, because there is one market
 | Forecast | `forecast`, with an explicit warning when it's the fallback |
 | Market terms | `market` — expiry, tick, margin, oracle freshness |
 | Depth ladder | `orderbook` + `quote` from the C++ engine — **indicative** |
-| Sparkline | `GET /api/v1/history`, last 240 readings |
+| Candlestick chart | `GET /api/v1/candles` — OHLC aggregated from EGSI readings |
+| Technicals | RSI / MACD / MA, computed client-side from the candles |
 | Place an order | `POST /api/v1/orders/prepare`, then the wallet signs |
 | ETH-correlated risk | `POST /api/v1/hedge/assess` and `/evaluate` |
 

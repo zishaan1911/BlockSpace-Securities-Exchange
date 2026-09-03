@@ -48,22 +48,22 @@ export function HedgePanel({ egsiLevel }: { egsiLevel: number | null }) {
   }
 
   return (
-    <div className="panel action">
-      <header>
-        <span>ETH hedge</span>
-        <span>Thetanuts · Base</span>
-      </header>
-      <div className="body">
+    <div className="card">
+      <h2>
+        ETH hedge
+        <span className="tag">Thetanuts · Base</span>
+      </h2>
+      <div className="inner">
         <div className="form">
           <label htmlFor="net">Net position · contracts (signed)</label>
           <input id="net" inputMode="numeric" value={netContracts} onChange={(e) => setNetContracts(e.target.value)} />
-          <p className="indicative">No position feed yet — enter it manually.</p>
+          <p className="note">No position feed yet — enter it manually.</p>
 
-          <div className="sidebtns">
-            <button className="fn" onClick={() => run('assess')} disabled={!ready || busy !== null}>
+          <div className="tabs">
+            <button className="ghost" onClick={() => run('assess')} disabled={!ready || busy !== null}>
               {busy === 'assess' ? 'Checking…' : 'Assess'}
             </button>
-            <button className="fn" onClick={() => run('evaluate')} disabled={!ready || busy !== null}>
+            <button className="ghost" onClick={() => run('evaluate')} disabled={!ready || busy !== null}>
               {busy === 'evaluate' ? 'Quoting…' : 'Request quotes'}
             </button>
           </div>

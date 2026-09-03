@@ -8,6 +8,25 @@ import type { FastifyInstance } from 'fastify';
 import type { GatewayDeps } from '../server.js';
 
 export function registerMarketRoutes(app: FastifyInstance, deps: GatewayDeps): void {
+  /** EGSI as OHLC candles for the chart. */
+  app.get<{ Querystring: { interval?: string; limit?: string; market?: string } }>(
+    '/api/v1/candles',
+    async (request, reply) => {
+      if (!deps.db) {
+        return reply.status(503).send({ error: 'no database configured; see database/README.md' });
+      }
+      const market = request.query.market || 'EGSI-1H';
+      const interval = Number.parseInt(request.query.interval ?? '300', 10);
+      const limit = Number.parseInt(request.query.limit ?? '200', 10);
+      const candles = await deps.db.getEgsiCandles(
+        market,
+        Number.isFinite(interval) ? interval : 300,
+        Number.isFinite(limit) ? limit : 200,
+      );
+      return { market, interval, count: candles.length, candles };
+    },
+  );
+
   /**
    * Durable EGSI history, oldest first. Exists so ai/inference/train.py
    * can train on real accumulated readings instead of synthetic data,

@@ -14,9 +14,9 @@ import { formatConfidence, stressBand, bandColorVar, timeToExpiry } from '../lib
 export function ForecastPanel({ forecast }: { forecast: Forecast | null }) {
   if (!forecast) {
     return (
-      <div className="panel">
-        <header><span>Forecast</span></header>
-        <div className="body">
+      <div className="card">
+        <h2>Forecast</h2>
+        <div className="inner">
           <p className="empty">No forecast. The AI service has not cycled yet.</p>
         </div>
       </div>
@@ -34,12 +34,12 @@ export function ForecastPanel({ forecast }: { forecast: Forecast | null }) {
   const band = stressBand(forecast.expected_egsi);
 
   return (
-    <div className="panel">
-      <header>
-        <span>Forecast</span>
-        <span>{forecast.market}</span>
-      </header>
-      <div className="body">
+    <div className="card">
+      <h2>
+        Forecast
+        <span className="tag">{forecast.market}</span>
+      </h2>
+      <div className="inner">
 
       {isFallback && <div className="msg warn">No forecast yet. Placeholder values.</div>}
 
@@ -76,12 +76,12 @@ export function MarketPanel({ market, nowMs }: { market: MarketState; nowMs: num
   const remaining = timeToExpiry(market.expiryMs, nowMs);
 
   return (
-    <div className="panel">
-      <header>
-        <span>Contract</span>
-        <span>{market.marketId.slice(0, 10)}…</span>
-      </header>
-      <div className="body">
+    <div className="card">
+      <h2>
+        Contract
+        <span className="tag">{market.marketId.slice(0, 10)}…</span>
+      </h2>
+      <div className="inner">
 
       {market.devMode && (
         <div className="notice warn" style={{ marginBottom: '1rem' }}>

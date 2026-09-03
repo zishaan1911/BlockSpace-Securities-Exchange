@@ -93,6 +93,15 @@ export interface MarketResponse {
   quote: IndicativeQuote | null;
 }
 
+export interface Candle {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  samples: number;
+}
+
 export interface HistoryPoint {
   score: number;
   blockNumber: number;
@@ -163,6 +172,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   getMarket: () => request<MarketResponse>('/api/v1/market'),
+
+  /** EGSI as OHLC candles. `interval` is bucket width in seconds. */
+  getCandles: (interval = 300, limit = 300) =>
+    request<{ interval: number; count: number; candles: Candle[] }>(
+      `/api/v1/candles?interval=${interval}&limit=${limit}`,
+    ),
 
   /** Recent EGSI readings for the sparkline. Fails soft: a terminal
    * without a chart is still usable, so callers treat this as optional. */

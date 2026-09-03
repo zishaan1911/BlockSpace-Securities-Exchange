@@ -73,17 +73,17 @@ export function OrderTicket({ market, onFilled }: Props) {
   }
 
   return (
-    <div className="panel action">
-      <header>
-        <span>Order ticket</span>
-        <span>{isBid ? 'BUY' : 'SELL'}</span>
-      </header>
-      <div className="body">
+    <div className="card">
+      <h2>
+        Order
+        <span className="tag">{isBid ? 'Buy' : 'Sell'}</span>
+      </h2>
+      <div className="inner">
         {!account && <p className="empty">Connect a wallet to trade.</p>}
 
         {account && (
           <div className="form">
-            <div className="sidebtns" role="group" aria-label="Side">
+            <div className="tabs" role="group" aria-label="Side">
               <button type="button" data-side="buy" aria-pressed={isBid} onClick={() => setIsBid(true)}>
                 Buy
               </button>
@@ -111,12 +111,12 @@ export function OrderTicket({ market, onFilled }: Props) {
               onChange={(e) => setMarginAccountId(e.target.value)}
             />
 
-            <button className="go" onClick={placeOrder} disabled={!canSubmit}>
+            <button className="primary" onClick={placeOrder} disabled={!canSubmit}>
               {busy ? 'Awaiting wallet…' : `${isBid ? 'Buy' : 'Sell'} ${quantity || '0'}`}
             </button>
 
             {tradingClosed && (
-              <p className="indicative">{market.settled ? 'Market settled.' : 'Trading paused.'}</p>
+              <p className="note">{market.settled ? 'Market settled.' : 'Trading paused.'}</p>
             )}
 
             {error && <div className="msg err">{error}</div>}

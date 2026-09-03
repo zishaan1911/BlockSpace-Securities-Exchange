@@ -1,339 +1,299 @@
 /*
- * GASX terminal.
+ * GASX — exchange terminal.
  *
- * Direction: Bloomberg Terminal. That is a specific, historically
- * grounded language rather than a generic "dark hacker" theme, and it
- * has rules worth following exactly:
+ * Direction: Binance. Like Bloomberg, this is a specific language with
+ * rules rather than a generic dark theme:
  *
- *   - Amber on black. The amber is the primary text colour, not an
- *     accent used sparingly; cyan carries section headers; white is
- *     reserved for the data values themselves so numbers read louder
- *     than their labels.
- *   - Density over comfort. ~11px monospace, tight leading, and as much
- *     on screen at once as remains legible. A terminal is read by
- *     someone scanning for a number, not browsed.
- *   - Hard rectangles. No border radius, no shadows, no gradients.
- *   - Title bars are solid fills with inverted (black) text.
- *   - Numerics right-aligned and tabular so columns compare by eye.
+ *   - Near-black panels (#181a20) on a deeper page (#0b0e11), separated
+ *     by hairline borders rather than shadows.
+ *   - Gold (#fcd535) is the brand accent, used sparingly for the
+ *     wordmark, active states and primary actions — NOT as body text.
+ *     Body text is grey; values are near-white.
+ *   - Green #0ecb81 / red #f6465d carry direction, and nothing else.
+ *   - Sans-serif, not monospace. Binance reads as a consumer product,
+ *     not a 1980s terminal. Numerics still use tabular figures so
+ *     columns align.
+ *   - Comfortable density: tighter than a marketing page, looser than
+ *     the Bloomberg build this replaces.
  *
- * Monospace throughout is the one case where it is correct rather than
- * decorative: column alignment is load-bearing here, and the terminal
- * idiom is itself monospaced. IBM Plex Mono stands in for Bloomberg's
- * proprietary face — a deliberate pick, not a fallback.
+ * The previous iteration was Bloomberg amber-on-black. That was a
+ * coherent look, but it made everything shout at the same volume, which
+ * is exactly what stops a chart from dominating. Here the chart is the
+ * page and the palette recedes.
  */
 
 :root {
-  --bg: #000000;
-  --panel: #080806;
-  --rule: #2b2519;
-  --rule-bright: #4a3f28;
+  --page: #0b0e11;
+  --panel: #181a20;
+  --panel-2: #1e2329;
+  --line: #2b3139;
 
-  /* Amber is the voice of the interface. */
-  --amber: #ffa028;
-  --amber-dim: #a86d1c;
-  --amber-faint: #5c3d12;
+  --gold: #fcd535;
+  --up: #0ecb81;
+  --down: #f6465d;
+  --blue: #7856ff;
 
-  /* Data values, louder than their labels. */
-  --value: #f0ede6;
+  --text: #eaecef;
+  --muted: #848e9c;
+  --faint: #5e6673;
 
-  /* Section headers and keys. */
-  --cyan: #2fb6e8;
-
-  /* Direction. Green up, red down — never used decoratively. */
-  --up: #22c55e;
-  --down: #ef4444;
-
-  --grey: #6d6455;
-
-  font-synthesis: none;
+  --r: 4px;
 }
 
 * { box-sizing: border-box; }
-
 html, body, #root { height: 100%; }
 
 body {
   margin: 0;
-  background: var(--bg);
-  color: var(--amber);
-  font-family: 'IBM Plex Mono', 'Courier New', monospace;
-  font-size: 11.5px;
-  line-height: 1.45;
-  font-variant-numeric: tabular-nums;
+  background: var(--page);
+  color: var(--text);
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 12px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
 
-a { color: var(--cyan); }
+.num { font-variant-numeric: tabular-nums; }
+.up { color: var(--up); }
+.down { color: var(--down); }
+.muted { color: var(--muted); }
 
-:focus-visible { outline: 1px solid var(--cyan); outline-offset: 1px; }
+a { color: var(--gold); text-decoration: none; }
+:focus-visible { outline: 1px solid var(--gold); outline-offset: 2px; }
 
-/* ---------- Command bar ---------- */
+/* ---------- Top bar ---------- */
 
-.cmdbar {
+.topbar {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  background: var(--amber);
-  color: #000;
-  padding: 0.25rem 0.6rem;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  gap: 1.5rem;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  padding: 0.6rem 1rem;
   flex-wrap: wrap;
 }
 
-.cmdbar .ticker { font-weight: 700; letter-spacing: 0.12em; }
-.cmdbar .spacer { margin-left: auto; }
-.cmdbar .field { color: #2a1c00; }
+.brand {
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--gold);
+}
+
+.pair { font-weight: 600; font-size: 0.95rem; }
+
+/* Ticker cells: label above value, the exchange-header convention. */
+.stat { display: flex; flex-direction: column; gap: 1px; }
+.stat .k { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+.stat .v { font-size: 12px; font-weight: 500; }
+.stat .v.big { font-size: 18px; font-weight: 600; }
+
+.push { margin-left: auto; }
 
 /* ---------- Layout ---------- */
 
-.screen {
-  padding: 0.4rem;
+.layout {
   display: grid;
-  gap: 0.4rem;
-  grid-template-columns: minmax(0, 3fr) minmax(0, 3fr) minmax(0, 4fr);
+  grid-template-columns: minmax(0, 1fr) 300px 300px;
+  gap: 8px;
+  padding: 8px;
   align-items: start;
 }
 
-.col { display: grid; gap: 0.4rem; min-width: 0; }
+.stack { display: grid; gap: 8px; min-width: 0; }
 
 /* ---------- Panels ---------- */
 
-.panel { border: 1px solid var(--rule); background: var(--panel); min-width: 0; }
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  min-width: 0;
+}
 
-.panel > header {
-  background: var(--cyan);
-  color: #000;
-  padding: 0.1rem 0.45rem;
-  font-weight: 700;
-  font-size: 10.5px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+.card > h2 {
+  margin: 0;
+  padding: 0.55rem 0.75rem;
+  font-size: 12px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--line);
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 0.5rem;
 }
 
-/* Amber header marks a panel that acts rather than reports. */
-.panel.action > header { background: var(--amber); }
-
-.panel > .body { padding: 0.45rem; }
-
-/* ---------- Key/value rows ---------- */
-
-.kv { display: grid; grid-template-columns: 1fr auto; gap: 0.15rem 0.75rem; }
-.kv dt { color: var(--amber-dim); text-transform: uppercase; letter-spacing: 0.04em; }
-.kv dd { margin: 0; text-align: right; color: var(--value); }
-
-/* ---------- Big readout ---------- */
-
-.readout { display: flex; align-items: baseline; gap: 0.5rem; }
-
-.readout .n {
-  font-size: 40px;
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: -0.02em;
-}
-
-.readout .unit { color: var(--amber-dim); font-size: 10px; letter-spacing: 0.1em; }
-
-/* Horizontal band scale: where the index sits on 0-1000. A terminal
-   shows a level, not a dial. */
-.scale { margin-top: 0.4rem; }
-
-.scale-track {
-  position: relative;
-  height: 10px;
-  border: 1px solid var(--rule-bright);
-  background: repeating-linear-gradient(
-    90deg, transparent 0 24px, var(--rule) 24px 25px
-  );
-}
-
-.scale-fill { position: absolute; inset: 0 auto 0 0; opacity: 0.5; }
-
-.scale-marker {
-  position: absolute;
-  top: -3px;
-  bottom: -3px;
-  width: 2px;
-  background: var(--value);
-}
-
-.scale-legend {
-  display: flex;
-  justify-content: space-between;
-  color: var(--grey);
-  font-size: 9.5px;
-  margin-top: 0.1rem;
-}
-
-/* ---------- Tables ---------- */
-
-table.grid { width: 100%; border-collapse: collapse; }
-
-table.grid th {
-  text-align: right;
-  color: var(--amber-dim);
+.card > h2 .tag {
   font-weight: 400;
-  font-size: 9.5px;
-  letter-spacing: 0.1em;
+  font-size: 10px;
+  color: var(--faint);
   text-transform: uppercase;
-  border-bottom: 1px solid var(--rule);
-  padding: 0.1rem 0.3rem;
+  letter-spacing: 0.06em;
 }
 
-table.grid th:first-child, table.grid td:first-child { text-align: left; }
+.card > .inner { padding: 0.75rem; }
 
-table.grid td {
+/* ---------- Chart toolbar ---------- */
+
+.toolbar {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+  padding: 0.4rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+
+.chip {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--r);
+  cursor: pointer;
+}
+
+.chip:hover { color: var(--text); background: var(--panel-2); }
+.chip[aria-pressed='true'] { background: var(--panel-2); color: var(--gold); }
+
+.toolbar .sep { width: 1px; height: 14px; background: var(--line); margin: 0 0.25rem; }
+
+/* ---------- Key/value ---------- */
+
+.kv { display: grid; grid-template-columns: 1fr auto; gap: 0.3rem 1rem; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ---------- Depth ---------- */
+
+.depth { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.depth th {
   text-align: right;
-  padding: 0.08rem 0.3rem;
-  color: var(--value);
-  white-space: nowrap;
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.2rem 0.3rem;
 }
-
-table.grid tr.bid td.px { color: var(--up); }
-table.grid tr.ask td.px { color: var(--down); }
-table.grid tr.spread td { color: var(--amber-dim); border-block: 1px solid var(--rule); }
-
-/* Depth bars sit behind the numbers rather than beside them, so the
-   shape of the book reads without spending a column on it. */
-td.depth { position: relative; }
-td.depth .bar { position: absolute; inset: 0 auto 0 0; opacity: 0.18; }
-td.depth span { position: relative; }
+.depth th:first-child, .depth td:first-child { text-align: left; }
+.depth td { text-align: right; padding: 0.18rem 0.3rem; position: relative; }
+.depth .px.bid { color: var(--up); }
+.depth .px.ask { color: var(--down); }
+.depth .bar { position: absolute; inset: 0 0 0 auto; opacity: 0.12; }
+.depth .mid td {
+  border-block: 1px solid var(--line);
+  padding-block: 0.35rem;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
 
 /* ---------- Component bars ---------- */
 
-.bars { display: grid; gap: 0.12rem; }
-
-.bar-row {
-  display: grid;
-  grid-template-columns: 7.5rem 1fr 2.6rem;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.bar-row .lbl { color: var(--amber-dim); text-transform: uppercase; font-size: 10px; }
-.bar-row .track { height: 7px; background: #16130c; border: 1px solid var(--rule); }
-.bar-row .fill { height: 100%; background: var(--amber); }
-.bar-row .val { text-align: right; color: var(--value); }
-.bar-row .absent { color: var(--grey); font-size: 10px; }
-
-/* ---------- Sparkline ---------- */
-
-.spark { width: 100%; height: 46px; display: block; }
+.bars { display: grid; gap: 0.3rem; }
+.bar-row { display: grid; grid-template-columns: 6.5rem 1fr 2.4rem; gap: 0.5rem; align-items: center; }
+.bar-row .lbl { color: var(--muted); font-size: 11px; }
+.bar-row .track { height: 4px; background: var(--panel-2); border-radius: 2px; overflow: hidden; }
+.bar-row .fill { height: 100%; background: var(--gold); }
+.bar-row .val { text-align: right; font-variant-numeric: tabular-nums; }
+.bar-row .absent { color: var(--faint); font-size: 10px; }
 
 /* ---------- Forms ---------- */
 
-.form { display: grid; gap: 0.3rem; }
+.form { display: grid; gap: 0.5rem; }
+.form label { color: var(--muted); font-size: 11px; }
 
-.form label {
-  color: var(--amber-dim);
-  text-transform: uppercase;
-  font-size: 9.5px;
-  letter-spacing: 0.08em;
-}
-
-input, select {
-  background: #000;
-  border: 1px solid var(--rule-bright);
-  color: var(--value);
+input {
+  background: var(--panel-2);
+  border: 1px solid transparent;
+  color: var(--text);
   font: inherit;
   font-variant-numeric: tabular-nums;
-  padding: 0.2rem 0.35rem;
+  padding: 0.4rem 0.55rem;
   width: 100%;
-  border-radius: 0;
+  border-radius: var(--r);
 }
 
-input:focus { border-color: var(--cyan); }
-input:disabled { color: var(--grey); }
+input:focus { border-color: var(--gold); outline: none; }
 
-.sidebtns { display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem; }
-
-.sidebtns button {
-  background: #000;
-  border: 1px solid var(--rule-bright);
-  color: var(--amber-dim);
+.tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border-radius: var(--r); overflow: hidden; }
+.tabs button {
+  background: var(--panel-2);
+  border: none;
+  color: var(--muted);
   font: inherit;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  padding: 0.25rem;
+  font-weight: 600;
+  padding: 0.45rem;
   cursor: pointer;
-  border-radius: 0;
-  text-transform: uppercase;
 }
+.tabs button[aria-pressed='true'][data-side='buy'] { background: var(--up); color: #0b0e11; }
+.tabs button[aria-pressed='true'][data-side='sell'] { background: var(--down); color: #fff; }
 
-.sidebtns button[aria-pressed='true'][data-side='buy'] { background: var(--up); border-color: var(--up); color: #000; }
-.sidebtns button[aria-pressed='true'][data-side='sell'] { background: var(--down); border-color: var(--down); color: #000; }
-
-button.go {
-  background: var(--amber);
-  border: 1px solid var(--amber);
-  color: #000;
+button.primary {
+  background: var(--gold);
+  border: none;
+  border-radius: var(--r);
+  color: #0b0e11;
   font: inherit;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  padding: 0.35rem;
+  font-weight: 600;
+  padding: 0.55rem;
   width: 100%;
   cursor: pointer;
-  border-radius: 0;
 }
+button.primary:disabled { background: var(--panel-2); color: var(--faint); cursor: not-allowed; }
 
-button.go:disabled { background: #1a160e; border-color: var(--rule-bright); color: var(--grey); cursor: not-allowed; }
-
-button.fn {
-  background: #000;
-  border: 1px solid var(--rule-bright);
-  color: var(--amber);
+button.ghost {
+  background: var(--panel-2);
+  border: none;
+  border-radius: var(--r);
+  color: var(--text);
   font: inherit;
-  padding: 0.2rem 0.5rem;
+  padding: 0.4rem 0.7rem;
   cursor: pointer;
-  border-radius: 0;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
 }
-
-button.fn:hover:not(:disabled) { background: var(--amber); color: #000; }
-button.fn:disabled { color: var(--grey); border-color: var(--rule); cursor: not-allowed; }
+button.ghost:hover:not(:disabled) { background: var(--line); }
+button.ghost:disabled { color: var(--faint); cursor: not-allowed; }
 
 /* ---------- Messages ---------- */
 
-.msg { padding: 0.25rem 0.4rem; border-left: 2px solid var(--rule-bright); margin-top: 0.35rem; }
-.msg.err { border-left-color: var(--down); color: var(--down); }
-.msg.ok { border-left-color: var(--up); color: var(--up); }
-.msg.warn { border-left-color: var(--amber); color: var(--amber); }
-.msg.info { border-left-color: var(--cyan); color: var(--amber-dim); }
+.msg { padding: 0.45rem 0.6rem; border-radius: var(--r); font-size: 11px; margin-top: 0.5rem; }
+.msg.err { background: rgba(246, 70, 93, 0.1); color: var(--down); }
+.msg.ok { background: rgba(14, 203, 129, 0.1); color: var(--up); }
+.msg.warn { background: rgba(252, 213, 53, 0.1); color: var(--gold); }
+.msg.info { background: var(--panel-2); color: var(--muted); }
 
-.empty { color: var(--grey); }
+.empty { color: var(--faint); font-size: 11px; }
+.note { color: var(--faint); font-size: 10px; margin-top: 0.4rem; }
 
-/* Marks any number the chain does not back. */
-.indicative {
-  color: var(--grey);
-  font-size: 9.5px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
+/* ---------- Indicator readouts ---------- */
 
-/* ---------- Status strip ---------- */
+.readings { display: grid; grid-template-columns: repeat(auto-fit, minmax(78px, 1fr)); gap: 0.5rem; }
+.reading { background: var(--panel-2); border-radius: var(--r); padding: 0.4rem 0.5rem; }
+.reading .k { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+.reading .v { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
 
-.statusbar {
+/* Meter for bounded indicators like RSI. */
+.meter { height: 3px; background: var(--panel); border-radius: 2px; margin-top: 0.3rem; overflow: hidden; }
+.meter span { display: block; height: 100%; }
+
+/* ---------- Status ---------- */
+
+.status {
   display: flex;
-  gap: 1rem;
+  gap: 1.25rem;
   flex-wrap: wrap;
-  border-top: 1px solid var(--rule);
-  padding: 0.2rem 0.6rem;
-  color: var(--amber-dim);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  padding: 0.4rem 1rem;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 10.5px;
 }
 
-.statusbar .dot { color: var(--up); }
-.statusbar .dot.off { color: var(--down); }
+.dot { color: var(--up); }
+.dot.off { color: var(--down); }
 
-@media (max-width: 1100px) {
-  .screen { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 1200px) {
+  .layout { grid-template-columns: minmax(0, 1fr); }
 }

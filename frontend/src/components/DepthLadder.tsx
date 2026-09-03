@@ -32,47 +32,49 @@ export function DepthLadder({ book, quote }: Props) {
   const width = (qty: number) => `${Math.round((qty / maxQty) * 100)}%`;
 
   return (
-    <div className="panel">
-      <header>
-        <span>Depth · EGSI-1H</span>
-        <span className="indicative">Indicative</span>
-      </header>
-      <div className="body">
+    <div className="card">
+      <h2>
+        Order book
+        <span className="tag">Indicative</span>
+      </h2>
+      <div className="inner">
         {!bid && !ask ? (
-          <p className="empty">No quote. The forecast is below the engine's confidence floor.</p>
+          <p className="empty">No quote — forecast is below the engine's confidence floor.</p>
         ) : (
-          <table className="grid">
+          <table className="depth">
             <thead>
               <tr>
-                <th>Side</th>
                 <th>Price</th>
                 <th>Size</th>
+                <th>Side</th>
               </tr>
             </thead>
             <tbody>
               {ask && (
-                <tr className="ask">
-                  <td>Ask</td>
-                  <td className="px">{ask.price}</td>
-                  <td className="depth">
+                <tr>
+                  <td className="px ask">{ask.price}</td>
+                  <td>
                     <span className="bar" style={{ width: width(ask.quantity), background: 'var(--down)' }} />
-                    <span>{ask.quantity}</span>
+                    {ask.quantity}
                   </td>
+                  <td className="muted">Ask</td>
                 </tr>
               )}
-              <tr className="spread">
-                <td>Spread</td>
-                <td>{spread ?? '—'}</td>
-                <td>{mid !== null ? `mid ${Math.round(mid)}` : '—'}</td>
+              <tr className="mid">
+                <td className="num">{mid !== null ? Math.round(mid) : '—'}</td>
+                <td className="muted" style={{ fontWeight: 400, fontSize: 11 }}>
+                  spread {spread ?? '—'}
+                </td>
+                <td />
               </tr>
               {bid && (
-                <tr className="bid">
-                  <td>Bid</td>
-                  <td className="px">{bid.price}</td>
-                  <td className="depth">
+                <tr>
+                  <td className="px bid">{bid.price}</td>
+                  <td>
                     <span className="bar" style={{ width: width(bid.quantity), background: 'var(--up)' }} />
-                    <span>{bid.quantity}</span>
+                    {bid.quantity}
                   </td>
+                  <td className="muted">Bid</td>
                 </tr>
               )}
             </tbody>
@@ -80,16 +82,16 @@ export function DepthLadder({ book, quote }: Props) {
         )}
 
         {quote && (
-          <dl className="kv" style={{ marginTop: '0.5rem' }}>
-            <dt>Fair</dt>
+          <dl className="kv" style={{ marginTop: '0.6rem' }}>
+            <dt>Fair value</dt>
             <dd>{quote.fairPrice}</dd>
             <dt>Quote size</dt>
             <dd>{quote.size}</dd>
           </dl>
         )}
 
-        <p className="indicative" style={{ marginTop: '0.4rem' }}>
-          Engine quote, not resting orders. Settlement is on Sui.
+        <p className="note">
+          Engine quote from the AI forecast, not resting orders. Settlement is on Sui.
         </p>
       </div>
     </div>
