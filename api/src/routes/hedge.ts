@@ -197,6 +197,14 @@ export function registerHedgeRoutes(app: FastifyInstance, deps: GatewayDeps): vo
       });
     }
 
+    // Floor the tenor at twice the offer deadline so there is always
+    // real headroom, even if someone configures a long deadline and a
+    // short expiry.
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const deadlineSeconds = deps.exposureConfig.offerDeadlineMinutes * 60;
+    const hedgeExpiry =
+      nowSeconds + Math.max(deps.exposureConfig.hedgeExpiryHours * 3600, deadlineSeconds * 2);
+
     let hedgeRequest;
     try {
       hedgeRequest = await deps.hedgeProvider.requestHedgeQuote({
@@ -207,7 +215,13 @@ export function registerHedgeRoutes(app: FastifyInstance, deps: GatewayDeps): vo
       // delta the exposure actually implies; ATM is the simple,
       // defensible default for a first implementation.
       strike: Math.round(signal.underlyingPrice),
-      expiry: signal.expiry,
+      // NOT signal.expiry. That is the nearest expiry the vol signal
+      // could measure ATM IV from, which is frequently sooner than the
+      // RFQ's own offer deadline -- and Thetanuts rejects an option
+      // that expires before market makers have finished quoting it
+      // ("Option expiry must be after offer deadline"). The hedge's
+      // tenor is its own decision, floored well clear of the deadline.
+      expiry: hedgeExpiry,
       numContracts: deps.exposureConfig.hedgeContracts,
       direction: 'BUY',
       offerDeadlineMinutes: deps.exposureConfig.offerDeadlineMinutes,
@@ -217,10 +231,14 @@ export function registerHedgeRoutes(app: FastifyInstance, deps: GatewayDeps): vo
         exposure,
         forecast,
         hedged: false,
+        // Only mention the wallet when the failure is actually about a
+        // signer. Appending it unconditionally sent the reader chasing
+        // configuration that was already correct.
         error:
-          `could not submit the RFQ: ${(err as Error).message}. ` +
-          'This needs GASX_THETANUTS_HEDGE_WALLET_PRIVATE_KEY set, and that wallet funded with ' +
-          'ETH for gas on Base mainnet.',
+          `could not submit the RFQ: ${(err as Error).message}` +
+          (/signer|private key|wallet/i.test((err as Error).message)
+            ? '. Set GASX_THETANUTS_HEDGE_WALLET_PRIVATE_KEY and fund that wallet with ETH for gas on Base mainnet.'
+            : ''),
       });
     }
 

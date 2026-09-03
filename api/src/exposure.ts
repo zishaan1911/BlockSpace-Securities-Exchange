@@ -45,6 +45,20 @@ export interface ExposureConfig {
   hedgeContracts: number;
   /** Minutes market makers get to respond to a hedge RFQ. */
   offerDeadlineMinutes: number;
+  /**
+   * How far out to place the hedge's option expiry, in hours.
+   *
+   * Deliberately NOT the expiry the vol signal reports. That one is the
+   * nearest expiry with enough live quotes to measure ATM IV from,
+   * which is the right choice for measuring volatility and the wrong
+   * one for trading: it can be sooner than the RFQ's own offer
+   * deadline, and Thetanuts rejects an option that expires before
+   * market makers have finished quoting it.
+   *
+   * 24h by default — comfortably past any sane offer deadline, and the
+   * nearest tenor with real liquidity for an EGSI-1H hedge.
+   */
+  hedgeExpiryHours: number;
 }
 
 export interface ExposureInput {

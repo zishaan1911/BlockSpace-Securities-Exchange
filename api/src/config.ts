@@ -75,6 +75,7 @@ export function loadGatewayConfig(): GatewayConfig {
       hedgeThresholdNotional: readEnvInt('GASX_API_HEDGE_THRESHOLD_NOTIONAL', 5000),
       hedgeContracts: readEnvInt('GASX_API_HEDGE_CONTRACTS', 1),
       offerDeadlineMinutes: readEnvInt('GASX_API_HEDGE_OFFER_DEADLINE_MINUTES', 10),
+      hedgeExpiryHours: readEnvInt('GASX_API_HEDGE_EXPIRY_HOURS', 24),
     },
   };
 }

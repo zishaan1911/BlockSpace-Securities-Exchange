@@ -18,6 +18,7 @@ const exposureConfig: ExposureConfig = {
   hedgeThresholdNotional: 5000,
   hedgeContracts: 1,
   offerDeadlineMinutes: 10,
+  hedgeExpiryHours: 24,
 };
 
 let app: FastifyInstance;

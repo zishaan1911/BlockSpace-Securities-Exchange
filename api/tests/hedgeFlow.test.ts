@@ -24,6 +24,7 @@ const exposureConfig: ExposureConfig = {
   hedgeThresholdNotional: 5000,
   hedgeContracts: 1,
   offerDeadlineMinutes: 10,
+  hedgeExpiryHours: 24,
 };
 
 let app: FastifyInstance;
@@ -118,6 +119,38 @@ describe('POST /api/v1/hedge/evaluate', () => {
     expect(body.approved).toBe(true);
     // Never executes, no matter what.
     expect(body.hedged).toBe(false);
+  });
+
+  it('places the hedge expiry well after the offer deadline', async () => {
+    // Regression guard. The expiry was originally taken from the vol
+    // signal, which reports the nearest expiry it could measure ATM IV
+    // from -- frequently sooner than the RFQ's own offer deadline.
+    // Thetanuts rejects that outright: "Option expiry must be after
+    // offer deadline."
+    hedgeProvider.volSignal = { ...hedgeProvider.volSignal, expiry: Math.floor(Date.now() / 1000) + 60 };
+
+    await app.inject({ method: 'POST', url: '/api/v1/hedge/evaluate', payload: BREACHING });
+
+    const params = hedgeProvider.lastRequestHedgeQuoteParams!;
+    const deadlineAt = Math.floor(Date.now() / 1000) + exposureConfig.offerDeadlineMinutes * 60;
+    expect(params.expiry).toBeGreaterThan(deadlineAt);
+    // Not the vol signal's near expiry, which is what caused the bug.
+    expect(params.expiry).toBeGreaterThan(Math.floor(Date.now() / 1000) + 3600);
+  });
+
+  it('floors the tenor clear of the deadline even when configured short', async () => {
+    const deps: GatewayDeps = {
+      chainAdapter, hedgeProvider, aiClient, riskPolicy, logger: false,
+      exposureConfig: { ...exposureConfig, hedgeExpiryHours: 0, offerDeadlineMinutes: 60 },
+    };
+    const shortApp = buildServer(deps);
+
+    await shortApp.inject({ method: 'POST', url: '/api/v1/hedge/evaluate', payload: BREACHING });
+
+    const params = hedgeProvider.lastRequestHedgeQuoteParams!;
+    // Twice the deadline, so a long deadline plus a short tenor still
+    // leaves headroom rather than producing an invalid request.
+    expect(params.expiry).toBeGreaterThan(Math.floor(Date.now() / 1000) + 60 * 60);
   });
 
   it('requests the option type the exposure implies (PUT for net long)', async () => {
