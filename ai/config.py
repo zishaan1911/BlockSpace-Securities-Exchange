@@ -6,11 +6,23 @@ GASX_AI_-prefixed environment variables (e.g. GASX_AI_ETHEREUM_RPC_URL).
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Anchored to this file's own directory, not the process CWD.
+# pydantic-settings resolves a relative env_file against the CWD, and
+# main.py documents running uvicorn from the repo root
+# (`uvicorn main:app --app-dir ai`), where a bare ".env" resolved to
+# <repo-root>/.env — which doesn't exist. That failed silently: every
+# Sui oracle setting below fell back to its empty default and
+# POST /publish returned 501 "not configured" even with a correctly
+# filled-in ai/.env.
+_ENV_FILE = Path(__file__).resolve().parent / ".env"
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_prefix="GASX_AI_", extra="ignore")
+    model_config = SettingsConfigDict(env_file=str(_ENV_FILE), env_prefix="GASX_AI_", extra="ignore")
 
     # Ethereum ingestion (features/egsi.py's raw inputs).
     ethereum_rpc_url: str = "https://ethereum-rpc.publicnode.com"
