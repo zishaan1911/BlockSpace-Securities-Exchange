@@ -182,10 +182,31 @@ describe('POST /api/v1/hedge/evaluate', () => {
     expect(body.request.quotationId).toBe('42');
   });
 
-  it('returns 500 when RFQ submission itself fails', async () => {
+  it('explains what to fix when RFQ submission fails, rather than a bare 500', async () => {
     hedgeProvider.requestHedgeQuoteError = new Error('no hedge wallet configured');
+
     const res = await app.inject({ method: 'POST', url: '/api/v1/hedge/evaluate', payload: BREACHING });
-    expect(res.statusCode).toBe(500);
+
+    // 503, not 500: the fault is missing configuration, not a bug.
+    expect(res.statusCode).toBe(503);
+    const body = res.json();
+    expect(body.error).toMatch(/no hedge wallet configured/);
+    // Names the thing to set, so the UI is actionable on its own.
+    expect(body.error).toMatch(/GASX_THETANUTS_HEDGE_WALLET_PRIVATE_KEY/);
+    // The exposure work already done is still returned.
+    expect(body.exposure.breached).toBe(true);
+  });
+
+  it('explains a missing Thetanuts vol signal rather than failing opaquely', async () => {
+    hedgeProvider.getVolSignalError = new Error('no usable ETH options quotes with greeks');
+
+    const res = await app.inject({ method: 'POST', url: '/api/v1/hedge/evaluate', payload: BREACHING });
+
+    expect(res.statusCode).toBe(503);
+    expect(res.json().error).toMatch(/Thetanuts ETH options data/);
+    // No RFQ was submitted, so no gas was spent chasing a hedge that
+    // could not be priced.
+    expect(hedgeProvider.lastRequestHedgeQuoteParams).toBeNull();
   });
 });
 

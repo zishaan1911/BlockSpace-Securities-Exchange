@@ -43,13 +43,6 @@ export function ForecastPanel({ forecast }: { forecast: Forecast | null }) {
 
       {isFallback && <div className="msg warn">No forecast yet. Placeholder values.</div>}
 
-      {isUnvalidated && (
-        <div className="msg warn">
-          Model output, shown unvalidated. It did not beat a constant-mean baseline
-          out-of-sample, so treat the level as indicative.
-        </div>
-      )}
-
       {isBaseline && (
         <div className="msg info">
           Statistical baseline. Gas is strongly mean-reverting, so the recent average
@@ -91,8 +84,16 @@ export function MarketPanel({ market, nowMs }: { market: MarketState; nowMs: num
       )}
       {market.settled && <div className="msg info">Settled at {market.settlementPrice ?? '—'}. Closed.</div>}
       {market.paused && !market.settled && <div className="msg warn">Trading paused.</div>}
-      {!market.oracle.isFreshApprox && !market.settled && (
-        <div className="msg warn">Oracle stale. Settlement blocked.</div>
+      {/* An oracle that has never been published to is a different
+          situation from one whose price has gone stale, and conflating
+          them sent the reader looking for the wrong problem. */}
+      {!market.oracle.hasPrice && !market.settled && (
+        <div className="msg warn">
+          Oracle has no price yet. Publish one from the AI service before settlement.
+        </div>
+      )}
+      {market.oracle.hasPrice && !market.oracle.isFreshApprox && !market.settled && (
+        <div className="msg warn">Oracle price is stale. Settlement blocked until it updates.</div>
       )}
 
       <dl className="kv">

@@ -180,8 +180,26 @@ export function registerHedgeRoutes(app: FastifyInstance, deps: GatewayDeps): vo
       };
     }
 
-    const signal = await deps.hedgeProvider.getVolSignal('ETH');
-    const hedgeRequest = await deps.hedgeProvider.requestHedgeQuote({
+    // These two calls are where a hedge realistically fails, and the
+    // reasons are operational rather than programming errors: Thetanuts
+    // may have no live ETH quotes carrying greeks, or no hedge wallet is
+    // configured so no RFQ can be signed. Wrapping them turns an opaque
+    // 500 into something that says what to fix.
+    let signal;
+    try {
+      signal = await deps.hedgeProvider.getVolSignal('ETH');
+    } catch (err) {
+      return reply.status(503).send({
+        exposure,
+        forecast,
+        hedged: false,
+        error: `no usable Thetanuts ETH options data: ${(err as Error).message}`,
+      });
+    }
+
+    let hedgeRequest;
+    try {
+      hedgeRequest = await deps.hedgeProvider.requestHedgeQuote({
       underlying: 'ETH',
       optionType: exposure.suggestedOptionType,
       // At-the-money: the strike closest to spot, rounded to a whole
@@ -193,7 +211,18 @@ export function registerHedgeRoutes(app: FastifyInstance, deps: GatewayDeps): vo
       numContracts: deps.exposureConfig.hedgeContracts,
       direction: 'BUY',
       offerDeadlineMinutes: deps.exposureConfig.offerDeadlineMinutes,
-    });
+      });
+    } catch (err) {
+      return reply.status(503).send({
+        exposure,
+        forecast,
+        hedged: false,
+        error:
+          `could not submit the RFQ: ${(err as Error).message}. ` +
+          'This needs GASX_THETANUTS_HEDGE_WALLET_PRIVATE_KEY set, and that wallet funded with ' +
+          'ETH for gas on Base mainnet.',
+      });
+    }
 
     const candidate = await deps.hedgeProvider.getBestCandidate(hedgeRequest);
     if (!candidate) {
