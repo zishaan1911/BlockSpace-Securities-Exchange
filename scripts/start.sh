@@ -142,6 +142,11 @@ echo "    Frontend   http://localhost:5173"
 if [ "$LAN" -eq 1 ]; then
   LAN_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
   [ -n "$LAN_IP" ] && echo "    On wifi    http://${LAN_IP}:5173"
+
+  if command -v tailscale >/dev/null 2>&1; then
+    TS_IP="$(tailscale ip -4 2>/dev/null)"
+    [ -n "$TS_IP" ] && echo "    Tailscale  http://${TS_IP}:5173"
+  fi
 fi
 echo "    Gateway    http://localhost:3000/api/v1/health"
 echo "    AI         http://localhost:8000/health"
