@@ -53,3 +53,9 @@ Thumbs.db
 *.log
 logs/
 logs/
+
+# Move CLI per-machine publish record -- never project state, and
+# committing it would make every clone fight over reusing one publish.
+Published.toml
+**/build/*/Published.toml
+*.pubfile.json
