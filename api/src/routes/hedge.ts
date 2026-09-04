@@ -55,9 +55,10 @@ export function validateExposureBody(body: ExposureBody): ValidatedExposure | st
   if (typeof body.netContracts !== 'number' || !Number.isFinite(body.netContracts)) {
     return 'netContracts must be a finite number (signed: positive = net long, negative = net short)';
   }
-  if (!Number.isInteger(body.netContracts)) {
-    return 'netContracts must be a whole number of contracts';
-  }
+  // Fractional is allowed. This is an input to exposure arithmetic, not
+  // an on-chain order quantity -- the integer constraint belongs to the
+  // Move contract's u64 `quantity`, and applying it here just blocked
+  // someone from asking "what if I were 0.5 long?".
   if (typeof body.egsiLevel !== 'number' || !Number.isFinite(body.egsiLevel) || body.egsiLevel <= 0) {
     return 'egsiLevel must be a positive number';
   }
