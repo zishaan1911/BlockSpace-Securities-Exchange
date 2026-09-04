@@ -69,12 +69,34 @@ fi
 # real cause hidden. Check the largest coin's balance instead.
 GAS_BUDGET=500000000
 GAS_JSON="$(sui client gas --json 2>/dev/null || echo '[]')"
-GAS_COUNT="$(echo "$GAS_JSON" | jq 'length')"
-[ "$GAS_COUNT" -gt 0 ] || die "no gas coins for $ACTIVE_ADDR. On testnet: sui client faucet"
-MAX_BALANCE="$(echo "$GAS_JSON" | jq '[.[].mistBalance // .[].balance // 0 | tonumber] | max')"
-ok "$GAS_COUNT gas coin(s), largest holds $MAX_BALANCE MIST (need $GAS_BUDGET)"
-if [ "${MAX_BALANCE:-0}" -lt "$GAS_BUDGET" ]; then
-  die "no single gas coin covers the $GAS_BUDGET MIST budget (largest is $MAX_BALANCE). Run: sui client faucet"
+GAS_COUNT="$(echo "$GAS_JSON" | jq 'length' 2>/dev/null || echo 0)"
+[ "${GAS_COUNT:-0}" -gt 0 ] || die "no gas coins for $ACTIVE_ADDR. On testnet: sui client faucet"
+
+# The CLI's gas JSON shape has changed at least twice (nested id.id /
+# balance.value, then flat gasCoinId / gasBalance, sometimes with an
+# extra array-wrapping layer around the coin list) -- this script has
+# now guessed wrong at that shape more than once. Recursive descent
+# (`..`) finds a balance-shaped field wherever it actually sits, rather
+# than assuming a specific nesting depth, and covers every shape seen
+# so far in one filter.
+MAX_BALANCE="$(echo "$GAS_JSON" | jq '
+  [.. | objects | (.gasBalance // .mistBalance // .balance.value? // .balance // empty)
+   | if type == "number" then . else (. | tonumber) end] | max
+' 2>/dev/null)"
+
+if [ -z "$MAX_BALANCE" ] || [ "$MAX_BALANCE" = "null" ]; then
+  # Could not parse a balance out of whatever shape this CLI version
+  # uses. Warn and proceed rather than blocking on a parsing gap in
+  # THIS script -- the publish attempt below fails loudly with full
+  # output on its own if gas really is insufficient, so this pre-check
+  # is a convenience, not the safety net.
+  warn "could not parse gas coin balances from 'sui client gas --json'; skipping the pre-check"
+  warn "if publish fails below with a gas error, run: sui client faucet"
+else
+  ok "$GAS_COUNT gas coin(s), largest holds $MAX_BALANCE MIST (need $GAS_BUDGET)"
+  if [ "$MAX_BALANCE" -lt "$GAS_BUDGET" ]; then
+    die "no single gas coin covers the $GAS_BUDGET MIST budget (largest is $MAX_BALANCE). Run: sui client faucet"
+  fi
 fi
 
 if [ "$DRY_RUN" -eq 1 ]; then
