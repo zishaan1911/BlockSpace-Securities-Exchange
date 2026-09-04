@@ -1,215 +1,272 @@
+import { useCurrentAccount } from '@mysten/dapp-kit-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import './styles.css';
+import {
+  getCandles,
+  getMarket,
+  type Candle,
+  type MarketSnapshot,
+} from './lib/api';
+import { AppHeader, type AppTab } from './components/AppHeader';
+import { LandingPage } from './components/LandingPage';
+import { WalletModal } from './components/WalletModal';
+import { MarketDashboard } from './components/MarketDashboard';
+import { TradePage, type SessionTrade } from './components/TradePage';
+import { HedgePage } from './components/HedgePage';
+import { AnalyticsPage } from './components/AnalyticsPage';
+
+function SessionPositions({ trades }: { trades: SessionTrade[] }) {
+  return (
+    <section className="card positions-card">
+      <div className="card-heading">
+        <div>
+          <h2>Open Positions</h2>
+          <span className="section-note">Session activity</span>
+        </div>
+      </div>
+
+      {trades.length ? (
+        <div className="positions-table-wrap">
+          <table className="positions-table">
+            <thead>
+              <tr>
+                <th>Contract</th>
+                <th>Side</th>
+                <th>Size</th>
+                <th>Entry Price</th>
+                <th>Sui Digest</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {trades.map((trade) => (
+                <tr key={trade.digest}>
+                  <td>EGSI-1H</td>
+                  <td className={trade.side === 'long' ? 'positive-text' : 'negative-text'}>
+                    {trade.side[0]!.toUpperCase() + trade.side.slice(1)}
+                  </td>
+                  <td>{trade.quantity}</td>
+                  <td>{trade.price.toFixed(2)}</td>
+                  <td title={trade.digest}>{trade.digest.slice(0, 14)}…</td>
+                  <td>
+                    <span className="session-chip">Executed</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="positions-empty">
+          <b>No session trades yet.</b>
+          <span>
+            Your current repository does not have a position indexer, so GASX only shows trades
+            executed in this browser session here.
+          </span>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function timestampToSeconds(timestamp: number | undefined): number | null {
+  if (!Number.isFinite(timestamp)) return null;
+  const value = timestamp!;
+  return value > 10_000_000_000 ? Math.floor(value / 1000) : Math.floor(value);
+}
+
 /**
- * Exchange terminal.
- *
- * Chart-dominant, the way an exchange front-end is: the price series
- * gets the room, and everything else sits beside it. Left column is the
- * chart plus its technicals; centre is depth and drivers; right is the
- * things that act — order ticket and hedge.
- *
- * Two polling rates, because the underlying data moves at two speeds:
- * market state every 5s (EGSI updates on Ethereum's ~12s block time),
- * candles every 30s (a 5-minute bucket cannot change faster than that,
- * and refetching 300 bars every 5s is waste).
+ * Build real, session-local 1-minute OHLC candles from the live EGSI snapshots
+ * the browser actually receives. This is only used when /api/v1/candles has no
+ * saved history yet.
  */
-import { useCallback, useEffect, useState } from 'react';
-import { ConnectButton } from '@mysten/dapp-kit-react/ui';
-import { api, ApiError, type Candle, type MarketResponse } from './lib/api';
-import { CandleChart } from './components/CandleChart';
-import { Indicators } from './components/Indicators';
-import { DepthLadder } from './components/DepthLadder';
-import { DriverBars } from './components/DriverBars';
-import { ForecastPanel, MarketPanel } from './components/Panels';
-import { OrderTicket } from './components/OrderTicket';
-import { HedgePanel } from './components/HedgePanel';
-import { percentChange } from './lib/indicators';
-import { bandLabel, stressBand, timeToExpiry } from './lib/egsi';
+function appendLiveSnapshot(
+  current: Candle[],
+  snapshot: MarketSnapshot,
+): Candle[] {
+  const observedAt = timestampToSeconds(snapshot.egsi.timestamp) ?? Math.floor(Date.now() / 1000);
+  const bucket = Math.floor(observedAt / 60) * 60;
+  const score = snapshot.egsi.score;
 
-const MARKET_POLL_MS = 5_000;
-const CANDLE_POLL_MS = 30_000;
+  if (!Number.isFinite(score)) return current;
 
-const INTERVALS = [
-  { label: '1m', seconds: 60 },
-  { label: '5m', seconds: 300 },
-  { label: '15m', seconds: 900 },
-  { label: '1h', seconds: 3600 },
-];
+  const next = [...current];
+  const last = next.at(-1);
+
+  if (last && last.time === bucket) {
+    next[next.length - 1] = {
+      ...last,
+      high: Math.max(last.high, score),
+      low: Math.min(last.low, score),
+      close: score,
+    };
+  } else if (!last || bucket > last.time) {
+    next.push({
+      time: bucket,
+      open: score,
+      high: score,
+      low: score,
+      close: score,
+    });
+  }
+
+  return next.slice(-240);
+}
+
+function mergeCandles(apiCandles: Candle[], sessionCandles: Candle[]): Candle[] {
+  const byTime = new Map<number, Candle>();
+  for (const candle of apiCandles) byTime.set(candle.time, candle);
+  for (const candle of sessionCandles) byTime.set(candle.time, candle);
+  return [...byTime.values()].sort((a, b) => a.time - b.time);
+}
 
 export default function App() {
-  const [data, setData] = useState<MarketResponse | null>(null);
-  const [candles, setCandles] = useState<Candle[]>([]);
-  const [interval, setIntervalSeconds] = useState(300);
-  const [showBollinger, setShowBollinger] = useState(false);
-  const [showEmas, setShowEmas] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [nowMs, setNowMs] = useState(() => Date.now());
+  const account = useCurrentAccount();
 
-  const loadMarket = useCallback(async () => {
+  const [view, setView] = useState<'landing' | 'app'>('landing');
+  const [tab, setTab] = useState<AppTab>('market');
+  const [walletOpen, setWalletOpen] = useState(false);
+
+  const [snapshot, setSnapshot] = useState<MarketSnapshot | null>(null);
+  const [apiCandles, setApiCandles] = useState<Candle[]>([]);
+  const [sessionCandles, setSessionCandles] = useState<Candle[]>([]);
+
+  const [loading, setLoading] = useState(false);
+  const [marketError, setMarketError] = useState('');
+  const [historyNotice, setHistoryNotice] = useState('');
+  const [sessionTrades, setSessionTrades] = useState<SessionTrade[]>([]);
+
+  const candles = useMemo(
+    () => mergeCandles(apiCandles, sessionCandles),
+    [apiCandles, sessionCandles],
+  );
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+
     try {
-      setData(await api.getMarket());
-      setError(null);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Gateway unreachable.');
+      const [marketResult, candleResult] = await Promise.allSettled([
+        getMarket(),
+        getCandles(),
+      ]);
+
+      if (marketResult.status === 'fulfilled') {
+        const nextSnapshot = marketResult.value;
+        setSnapshot(nextSnapshot);
+        setMarketError('');
+        setSessionCandles((current) => appendLiveSnapshot(current, nextSnapshot));
+      } else {
+        setMarketError(
+          marketResult.reason instanceof Error
+            ? marketResult.reason.message
+            : 'Could not load live market',
+        );
+      }
+
+      if (candleResult.status === 'fulfilled') {
+        setApiCandles(candleResult.value);
+
+        if (candleResult.value.length === 0) {
+          setHistoryNotice(
+            'No saved EGSI candles were returned yet. GASX is showing real session history as live snapshots arrive.',
+          );
+        } else {
+          setHistoryNotice('');
+        }
+      } else {
+        setHistoryNotice(
+          `Historical candles are unavailable (${candleResult.reason instanceof Error ? candleResult.reason.message : 'request failed'}). GASX is showing real session history instead.`,
+        );
+      }
+    } finally {
+      setLoading(false);
     }
   }, []);
 
-  // Candles fail soft: the terminal is still usable without a chart, so
-  // a missing database should not blank the screen.
-  const loadCandles = useCallback(async () => {
-    try {
-      const { candles: bars } = await api.getCandles(interval, 300);
-      setCandles(bars);
-    } catch {
-      /* keep whatever is already drawn */
-    }
-  }, [interval]);
+  useEffect(() => {
+    if (view !== 'app') return;
+
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 15_000);
+
+    return () => window.clearInterval(timer);
+  }, [view, refresh]);
 
   useEffect(() => {
-    void loadMarket();
-    const timer = setInterval(() => {
-      void loadMarket();
-      setNowMs(Date.now());
-    }, MARKET_POLL_MS);
-    return () => clearInterval(timer);
-  }, [loadMarket]);
+    if (account && walletOpen) setWalletOpen(false);
+  }, [account, walletOpen]);
 
-  useEffect(() => {
-    void loadCandles();
-    const timer = setInterval(() => void loadCandles(), CANDLE_POLL_MS);
-    return () => clearInterval(timer);
-  }, [loadCandles]);
-
-  const market = data?.market ?? null;
-  const egsi = data?.egsi ?? null;
-  const closes = candles.map((c) => c.close);
-  const change = percentChange(closes.slice(-Math.min(closes.length, 288)));
-  const band = egsi ? stressBand(egsi.score) : null;
-  const live = data !== null && error === null;
+  function launch(tabTarget: AppTab = 'market') {
+    setView('app');
+    setTab(tabTarget);
+  }
 
   return (
     <>
-      <div className="topbar">
-        <span className="brand">GASX</span>
-        <span className="pair">EGSI-1H</span>
+      {view === 'landing' ? (
+        <LandingPage
+          onLaunch={() => launch('market')}
+          onConnect={() => setWalletOpen(true)}
+        />
+      ) : (
+        <div className="app-shell">
+          <AppHeader
+            active={tab}
+            onTab={setTab}
+            onConnect={() => setWalletOpen(true)}
+            onHome={() => setView('landing')}
+          />
 
-        <div className="stat">
-          <span className="k">Index</span>
-          <span
-            className="v big num"
-            style={{ color: change === null ? undefined : change >= 0 ? 'var(--up)' : 'var(--down)' }}
-          >
-            {egsi ? egsi.score : '—'}
-          </span>
-        </div>
+          <main className="app-main">
+            {marketError && (
+              <div className="top-error">
+                <b>Live API:</b> {marketError}
+                <button onClick={() => void refresh()}>Retry</button>
+              </div>
+            )}
 
-        <div className="stat">
-          <span className="k">24h change</span>
-          <span className={`v num ${change === null ? '' : change >= 0 ? 'up' : 'down'}`}>
-            {change === null ? '—' : `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`}
-          </span>
-        </div>
+            {historyNotice && <div className="history-notice">{historyNotice}</div>}
 
-        <div className="stat">
-          <span className="k">State</span>
-          <span className="v">{band ? bandLabel(band) : '—'}</span>
-        </div>
+            {tab === 'market' && (
+              <MarketDashboard
+                snapshot={snapshot}
+                candles={candles}
+                loading={loading}
+                error={marketError}
+                onTrade={() => setTab('trade')}
+              />
+            )}
 
-        <div className="stat">
-          <span className="k">Oracle</span>
-          <span className="v num">
-            {market?.oracle.hasPrice ? market.oracle.price : 'unpublished'}
-          </span>
-        </div>
+            {tab === 'trade' && (
+              <>
+                <TradePage
+                  snapshot={snapshot}
+                  candles={candles}
+                  onTrade={(trade) =>
+                    setSessionTrades((current) => [trade, ...current])
+                  }
+                />
+                <SessionPositions trades={sessionTrades} />
+              </>
+            )}
 
-        <div className="stat">
-          <span className="k">Expiry</span>
-          <span className="v num">
-            {market ? (timeToExpiry(market.expiryMs, nowMs) ?? 'expired') : '—'}
-          </span>
-        </div>
+            {tab === 'hedge' && <HedgePage snapshot={snapshot} />}
+            {tab === 'analytics' && (
+              <AnalyticsPage snapshot={snapshot} candles={candles} />
+            )}
+          </main>
 
-        <span className="push" />
-        <ConnectButton />
-      </div>
-
-      {error && !data && (
-        <div className="msg err" style={{ margin: '8px' }}>
-          {error} Start the gateway with <code>npm run dev</code> in <code>api/</code>.
+          <footer className="app-footer">
+            <span>GASX · AI-native Ethereum gas futures</span>
+            <span>Trading on Sui · Hedging on Thetanuts / Base</span>
+            <a href="https://www.tradingview.com/" target="_blank" rel="noreferrer">
+              Charts by TradingView
+            </a>
+          </footer>
         </div>
       )}
 
-      {data && market && (
-        <div className="layout">
-          <div className="stack">
-            <div className="card">
-              <div className="toolbar">
-                {INTERVALS.map((i) => (
-                  <button
-                    key={i.seconds}
-                    className="chip"
-                    aria-pressed={interval === i.seconds}
-                    onClick={() => setIntervalSeconds(i.seconds)}
-                  >
-                    {i.label}
-                  </button>
-                ))}
-                <span className="sep" />
-                <button className="chip" aria-pressed={showEmas} onClick={() => setShowEmas((v) => !v)}>
-                  EMA 12/26
-                </button>
-                <button
-                  className="chip"
-                  aria-pressed={showBollinger}
-                  onClick={() => setShowBollinger((v) => !v)}
-                >
-                  Bollinger
-                </button>
-                <span className="push" />
-                <span className="tag muted">{candles.length} bars</span>
-              </div>
-              {candles.length === 0 ? (
-                <div className="inner">
-                  <p className="empty">
-                    No candles yet. They build from stored EGSI readings — check the database is
-                    running.
-                  </p>
-                </div>
-              ) : (
-                <CandleChart candles={candles} showBollinger={showBollinger} showEmas={showEmas} />
-              )}
-            </div>
-
-            <Indicators closes={closes} />
-          </div>
-
-          <div className="stack">
-            <DepthLadder book={data.orderbook} quote={data.quote} />
-            <div className="card">
-              <h2>Index components</h2>
-              <div className="inner">
-                <DriverBars components={egsi?.components ?? null} />
-              </div>
-            </div>
-            <MarketPanel market={market} nowMs={nowMs} />
-          </div>
-
-          <div className="stack">
-            <ForecastPanel forecast={data.forecast} />
-            <OrderTicket market={market} onFilled={loadMarket} />
-            <HedgePanel egsiLevel={egsi?.score ?? null} />
-          </div>
-        </div>
-      )}
-
-      <div className="status">
-        <span>
-          <span className={live ? 'dot' : 'dot off'}>●</span> {live ? 'Live' : 'Disconnected'}
-        </span>
-        <span>Market {MARKET_POLL_MS / 1000}s</span>
-        <span>Candles {CANDLE_POLL_MS / 1000}s</span>
-        {market && <span>{market.settled ? 'Settled' : market.paused ? 'Paused' : 'Open'}</span>}
-        {market && <span>Oracle {market.oracle.isFreshApprox ? 'fresh' : 'stale'}</span>}
-        <span className="push">Settlement Sui · Hedge Thetanuts/Base</span>
-      </div>
+      <WalletModal open={walletOpen} onClose={() => setWalletOpen(false)} />
     </>
   );
 }
