@@ -7,6 +7,7 @@
 #   ./scripts/deploy-sui.sh                      # publish to the active network
 #   ./scripts/deploy-sui.sh --dry-run            # show what it would do
 #   ./scripts/deploy-sui.sh --collateral=0x..::usdc::USDC
+#   ./scripts/deploy-sui.sh --multiplier=1 --tick=1 --margin-bps=100
 #
 # This spends gas. On testnet that is free from the faucet; if your
 # active environment is mainnet the script refuses unless you pass
@@ -26,12 +27,22 @@ ALLOW_MAINNET=0
 # already holds it, so the full path works without first sourcing test
 # USDC. Override with --collateral <type> to do it properly.
 COLLATERAL="0x2::sui::SUI"
+# Market economics. Margin scales with price * quantity * multiplier *
+# margin_bps, so these three set what a single test order actually
+# costs. The defaults are deliberately small: on testnet the point is to
+# exercise the flow cheaply, not to model a realistic contract size.
+MULTIPLIER=1
+TICK=1
+MARGIN_BPS=100
 
 for arg in "$@"; do
   case "$arg" in
     --dry-run)       DRY_RUN=1 ;;
     --allow-mainnet) ALLOW_MAINNET=1 ;;
     --collateral=*)  COLLATERAL="${arg#*=}" ;;
+    --multiplier=*)  MULTIPLIER="${arg#*=}" ;;
+    --tick=*)        TICK="${arg#*=}" ;;
+    --margin-bps=*)  MARGIN_BPS="${arg#*=}" ;;
     -h|--help)       sed -n '2,16p' "$0"; exit 0 ;;
     *) echo "unknown option: $arg" >&2; exit 1 ;;
   esac
@@ -55,6 +66,7 @@ ACTIVE_ADDR="$(sui client active-address 2>/dev/null || true)"
 
 ok "network: $ACTIVE_ENV"
 ok "collateral: $COLLATERAL"
+ok "multiplier $MULTIPLIER · tick $TICK · margin ${MARGIN_BPS}bps"
 ok "address: $ACTIVE_ADDR"
 
 if [ "$ACTIVE_ENV" = "mainnet" ] && [ "$ALLOW_MAINNET" -eq 0 ]; then
@@ -128,7 +140,7 @@ EXPIRY_MS=$(( ($(date +%s) + 3600) * 1000 ))
 
 MARKET_JSON="$(sui client call --json --gas-budget 100000000 \
   --package "$PACKAGE_ID" --module market --function create_market \
-  --args "$ADMIN_CAP" "EGSI-1H" "$EXPIRY_MS" 10 10 1000 "$ORACLE_ID")"
+  --args "$ADMIN_CAP" "EGSI-1H" "$EXPIRY_MS" "$MULTIPLIER" "$TICK" "$MARGIN_BPS" "$ORACLE_ID")"
 
 MARKET_ID="$(echo "$MARKET_JSON" | jq -r '
   .objectChanges[]

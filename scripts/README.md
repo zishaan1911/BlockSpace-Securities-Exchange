@@ -3,11 +3,48 @@
 | script | does |
 |---|---|
 | `bootstrap.sh` | installs every dependency and builds the project on a fresh machine |
+| `start.sh` | starts the whole stack from one terminal; `--lan` exposes it on the wifi |
 | `test-all.sh` | runs every test suite: Move, C++, Python, and the three TypeScript packages |
 | `deploy-sui.sh` | publishes contracts/gasx, creates the market + oracle, and turns dev-market mode off |
 | `new-hedge-wallet.mjs` | generates a fresh, isolated wallet for autonomous hedging |
 | `db-export.sh` | dumps the GASX database for transfer to another machine |
 | `db-import.sh` | restores a dump, replacing or merging with what is already there |
+
+## Running the stack
+
+```bash
+./scripts/start.sh              # everything, on localhost
+./scripts/start.sh --lan        # also reachable from other devices on the wifi
+./scripts/start.sh --no-db      # skip MySQL (no charts, no history)
+```
+
+Starts MySQL, the AI service, the gateway and the frontend, then waits.
+Ctrl-C stops everything **it** started — anything already running is
+detected by port and left alone, so this will not kill a database
+someone else is using.
+
+Logs stream to `logs/*.log` rather than interleaving on one screen, since
+four services writing to one terminal is unreadable:
+
+```bash
+tail -f logs/api.log
+```
+
+### Reaching it from another device
+
+`--lan` makes Vite bind `0.0.0.0` and prints the address to open on
+another laptop or phone on the same wifi.
+
+Only the frontend is exposed. Its dev-server proxy forwards `/api` to
+`127.0.0.1:3000` on the host machine, so the gateway, AI service and
+database stay bound to localhost and are never reachable from the
+network. That is deliberate: the gateway has no authentication, so
+exposing it directly would let anyone on the wifi prepare transactions
+and request hedge quotes.
+
+Vite also rejects requests whose `Host` header it does not recognise, so
+`vite.config.ts` sets `allowedHosts: true` — without it another device
+gets "Blocked request" rather than the app.
 
 ## Setting up a new machine
 
@@ -68,6 +105,19 @@ resulting ids into `blockchain/sui/.env` and `ai/.env` and sets
 It refuses to run against mainnet without `--allow-mainnet`, since
 publishing there costs real SUI, and it checks for gas up front rather
 than failing halfway through.
+
+**Market economics.** `--multiplier`, `--tick` and `--margin-bps` set
+what a single test order costs, since required margin scales with
+`price × quantity × multiplier × margin_bps`. They default to `1`, `1`
+and `100` (1%) — deliberately small, because on testnet the point is
+exercising the flow cheaply rather than modelling a realistic contract.
+At an EGSI of 300 that makes a 1-lot order cost 3 units of collateral
+instead of the 300 the earlier defaults required.
+
+Note this is *not* fractional quantity. `quantity` is a `u64` in the
+Move contract, so the smallest order remains 1 — but with a small
+multiplier, 1 is already a small position. True fractional lots would
+need a scale factor in the contract and a redeploy.
 
 **Collateral coin.** `Market<C>` and `MarginAccount<C>` are generic over
 the collateral type, and `C` is fixed when the market is created —
