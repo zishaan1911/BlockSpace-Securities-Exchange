@@ -72,11 +72,22 @@ describe('POST /api/v1/hedge/assess', () => {
     expect(res.json().exposure.breached).toBe(false);
   });
 
-  it('returns 400 for a non-integer contract count', async () => {
+  it('accepts a fractional position, since this is exposure math not an order', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/hedge/assess',
-      payload: { netContracts: 1.5, egsiLevel: 500 },
+      payload: { netContracts: 0.5, egsiLevel: 500 },
+    });
+    expect(res.statusCode).toBe(200);
+    // 0.5 * 10 multiplier * 500 * 0.5 beta = 1250
+    expect(res.json().exposure.ethBetaNotional).toBeCloseTo(1250, 6);
+  });
+
+  it('still rejects a non-numeric position', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/hedge/assess',
+      payload: { netContracts: 'lots', egsiLevel: 500 },
     });
     expect(res.statusCode).toBe(400);
   });

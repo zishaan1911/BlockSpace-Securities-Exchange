@@ -94,7 +94,27 @@ fi
 say "Publishing contracts/gasx"
 # ---------------------------------------------------------------------------
 
-PUBLISH_JSON="$(sui client publish --gas-budget 500000000 --json "$REPO_ROOT/contracts/gasx")"
+# Capture stdout and stderr separately: --json puts the payload on
+# stdout, but build and gas failures go to stderr, and `set -e` inside a
+# command substitution was swallowing them -- a failed publish looked
+# like the script simply stopping after "BUILDING gasx".
+PUBLISH_ERR="$(mktemp)"
+if ! PUBLISH_JSON="$(sui client publish --gas-budget 500000000 --json "$REPO_ROOT/contracts/gasx" 2>"$PUBLISH_ERR")"; then
+  echo
+  echo "--- sui client publish failed ---"
+  cat "$PUBLISH_ERR" >&2
+  rm -f "$PUBLISH_ERR"
+  die "publish failed (see the output above). Common causes: not enough gas (sui client faucet), or a Move build error."
+fi
+# A publish can also "succeed" with no JSON if the CLI wrote a warning
+# instead of a payload.
+if ! echo "$PUBLISH_JSON" | jq -e '.objectChanges' >/dev/null 2>&1; then
+  echo
+  cat "$PUBLISH_ERR" >&2
+  rm -f "$PUBLISH_ERR"
+  die "publish returned no objectChanges. Output above."
+fi
+rm -f "$PUBLISH_ERR"
 
 PACKAGE_ID="$(echo "$PUBLISH_JSON" | jq -r '
   .objectChanges[] | select(.type == "published") | .packageId')"
