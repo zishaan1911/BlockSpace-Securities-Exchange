@@ -73,11 +73,21 @@ if [ "$ACTIVE_ENV" = "mainnet" ] && [ "$ALLOW_MAINNET" -eq 0 ]; then
   die "active env is mainnet and publishing there costs real SUI. Re-run with --allow-mainnet if you mean it."
 fi
 
-# Publishing needs gas. Checking now gives a clear message instead of a
-# confusing failure partway through.
-GAS_COUNT="$(sui client gas --json 2>/dev/null | jq 'length' || echo 0)"
+# Publishing needs a SINGLE coin covering the whole gas budget, not
+# merely some gas somewhere -- Sui does not auto-merge coins for a
+# publish call. Three small coins pass a bare existence check while
+# still failing to publish, which is exactly what happened on testnet
+# here: the count check passed, the actual publish then failed with the
+# real cause hidden. Check the largest coin's balance instead.
+GAS_BUDGET=500000000
+GAS_JSON="$(sui client gas --json 2>/dev/null || echo '[]')"
+GAS_COUNT="$(echo "$GAS_JSON" | jq 'length')"
 [ "$GAS_COUNT" -gt 0 ] || die "no gas coins for $ACTIVE_ADDR. On testnet: sui client faucet"
-ok "$GAS_COUNT gas coin(s) available"
+MAX_BALANCE="$(echo "$GAS_JSON" | jq '[.[].mistBalance // .[].balance // 0 | tonumber] | max')"
+ok "$GAS_COUNT gas coin(s), largest holds $MAX_BALANCE MIST (need $GAS_BUDGET)"
+if [ "${MAX_BALANCE:-0}" -lt "$GAS_BUDGET" ]; then
+  die "no single gas coin covers the $GAS_BUDGET MIST budget (largest is $MAX_BALANCE). Run: sui client faucet"
+fi
 
 if [ "$DRY_RUN" -eq 1 ]; then
   echo
@@ -94,27 +104,31 @@ fi
 say "Publishing contracts/gasx"
 # ---------------------------------------------------------------------------
 
-# Capture stdout and stderr separately: --json puts the payload on
-# stdout, but build and gas failures go to stderr, and `set -e` inside a
-# command substitution was swallowing them -- a failed publish looked
-# like the script simply stopping after "BUILDING gasx".
-PUBLISH_ERR="$(mktemp)"
-if ! PUBLISH_JSON="$(sui client publish --gas-budget 500000000 --json "$REPO_ROOT/contracts/gasx" 2>"$PUBLISH_ERR")"; then
+# stdout and stderr are merged into one file rather than captured
+# separately. The first attempt at this only captured stderr on the
+# theory that build/gas errors go there -- they did not: the actual
+# cause landed on stdout (Sui mixes diagnostic text into --json output
+# on a pre-flight failure), got captured into the now-unused PUBLISH_JSON
+# variable, and was never shown. Capturing everything into one stream
+# and printing all of it on failure cannot repeat that mistake, whatever
+# stream the CLI decides to use next.
+PUBLISH_RAW="$(mktemp)"
+if ! sui client publish --gas-budget "$GAS_BUDGET" --json "$REPO_ROOT/contracts/gasx" > "$PUBLISH_RAW" 2>&1; then
   echo
   echo "--- sui client publish failed ---"
-  cat "$PUBLISH_ERR" >&2
-  rm -f "$PUBLISH_ERR"
-  die "publish failed (see the output above). Common causes: not enough gas (sui client faucet), or a Move build error."
+  cat "$PUBLISH_RAW"
+  rm -f "$PUBLISH_RAW"
+  die "publish failed (see the full output above)."
 fi
-# A publish can also "succeed" with no JSON if the CLI wrote a warning
-# instead of a payload.
+PUBLISH_JSON="$(cat "$PUBLISH_RAW")"
 if ! echo "$PUBLISH_JSON" | jq -e '.objectChanges' >/dev/null 2>&1; then
   echo
-  cat "$PUBLISH_ERR" >&2
-  rm -f "$PUBLISH_ERR"
-  die "publish returned no objectChanges. Output above."
+  echo "--- publish produced no objectChanges ---"
+  cat "$PUBLISH_RAW"
+  rm -f "$PUBLISH_RAW"
+  die "publish did not return the expected payload (see the full output above)."
 fi
-rm -f "$PUBLISH_ERR"
+rm -f "$PUBLISH_RAW"
 
 PACKAGE_ID="$(echo "$PUBLISH_JSON" | jq -r '
   .objectChanges[] | select(.type == "published") | .packageId')"
