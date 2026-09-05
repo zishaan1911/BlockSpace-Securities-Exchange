@@ -4,16 +4,6 @@
 >
 > Built for **MUBA HACKS 2026 — Thetanuts Track 02**. The bar: an AI agent places **at least one real on-chain options trade on Thetanuts, live on Base mainnet** — not paper trading, not testnet. Frontend is a web app; GASX trading lives on Sui.
 
-## Reading Order
-
-1. **[README.md](README.md)** — you are here: the idea and how it works
-2. **[GLOSSARY.md](GLOSSARY.md)** — plain-English definitions of every web3/finance term used here
-3. **[GOALS.md](GOALS.md)** — what the demo must do, and the build order
-4. **[ARCHITECTURE.md](ARCHITECTURE.md)** — how to build each piece, for developers
-5. **[setup.md](setup.md)** — dev environment: what to install in WSL, per stack
-
----
-
 ## The Idea
 
 GASX makes Ethereum congestion tradeable. It tracks one index — the **Ethereum Gas Stress Index (EGSI, 0–1000)** — that measures blockspace stress (base fee, block utilization, mempool pressure). AI forecasts EGSI; users trade 1-hour futures on it with USDC.
@@ -69,8 +59,6 @@ contracts/    Move: market, order, margin, position, oracle, settlement, events
 blockchain/   Sui adapter (reads + tx-prep) and Thetanuts adapter (market data + RFQ)
 database/     MySQL schema
 scripts/      test-all.sh (every test suite, all stacks)
-
-docs: README.md · GOALS.md · ARCHITECTURE.md · GLOSSARY.md · setup.md
 ```
 
 ## Quick Start — run the whole stack
@@ -81,7 +69,7 @@ disabled, labeled in the UI) while the AI service computes a **real EGSI
 from live Ethereum data**.
 
 ```text
-# 1. AI service (Python 3.12 — see setup.md)
+# 1. AI service (Python 3.12)
 cd ai
 uv venv venv --python 3.12 && uv pip install --python venv/bin/python -r requirements.txt
 cp .env.example .env
@@ -107,9 +95,8 @@ Open http://localhost:5173 — live EGSI gauge, forecast, market terms,
 and the hedge panel. Sanity-check the raw state with
 `curl http://localhost:3000/api/v1/market`.
 
-To go live: deploy `contracts/gasx` on Sui and fill in the deployed IDs
-(`blockchain/sui/README.md`), then the same stack reads the real market
-and order preparation turns on.
+To go live: deploy `contracts/gasx` on Sui and fill in the deployed IDs,
+then the same stack reads the real market and order preparation turns on.
 
 Every test suite, one command: `./scripts/test-all.sh`.
 

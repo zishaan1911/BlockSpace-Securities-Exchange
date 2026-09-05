@@ -47,7 +47,7 @@ need_sudo() {
 say "Checking the environment"
 # ---------------------------------------------------------------------------
 
-[ -f "$REPO_ROOT/ARCHITECTURE.md" ] || die "run this from inside the GASX repo"
+[ -f "$REPO_ROOT/README.md" ] || die "run this from inside the GASX repo"
 ok "repo root: $REPO_ROOT"
 
 if grep -qi microsoft /proc/version 2>/dev/null; then
