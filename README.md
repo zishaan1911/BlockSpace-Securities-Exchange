@@ -87,8 +87,23 @@ docker compose down         # stop and remove containers
 docker compose down -v      # also wipe the MySQL data volume
 ```
 
-After you change code, rebuild with the same `docker compose up --build`
-(layer-cached). If a client can't connect: allow inbound TCP 80 through the
+After you change code, rebuild with the same `docker compose up --build`.
+Builds are layer-cached, so you never re-download from scratch:
+
+- **Nothing changed** → `docker compose up -d` reuses the existing images
+  (no build, no download).
+- **Only code changed** → `docker compose up --build` re-runs only the
+  compile/copy steps; base images (`python`, `node`, `mysql`, `nginx`) and
+  the `npm ci`/`pip install` layers are reused from cache.
+- **A dependency changed** (`package.json`, `package-lock.json`, or
+  `ai/requirements.txt`) → only that service's install layer re-runs.
+
+Sui is pinned to **testnet** in `docker-compose.yml` (backend adapters) and
+the frontend build (`VITE_SUI_NETWORK=testnet`). The "DEV MARKET" banner you
+see is the un-deployed synthetic market (orders disabled), not the network —
+the chain is testnet.
+
+If a client can't connect: allow inbound TCP 80 through the
 Windows Firewall and turn off the router's "client isolation". If port 80
 is taken, change the `web` port in `docker-compose.yml` (e.g. `8080:80`)
 and browse `http://<host-ip>:8080/`.

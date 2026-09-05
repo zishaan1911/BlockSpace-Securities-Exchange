@@ -14,15 +14,30 @@ RUN apt-get update \
 
 WORKDIR /app
 
-COPY . .
+# Package manifests first so `npm ci` layers stay cached across source-only
+# changes (a frontend/ai edit no longer re-downloads the gateway's deps).
+COPY blockchain/sui/package.json blockchain/sui/package-lock.json blockchain/sui/
+COPY blockchain/thetanuts/package.json blockchain/thetanuts/package-lock.json blockchain/thetanuts/
+COPY api/package.json api/package-lock.json api/
 
-# Adapters (tsc -> dist) that the gateway imports via file: deps.
-RUN npm --prefix blockchain/sui ci && npm --prefix blockchain/sui run build
-RUN npm --prefix blockchain/thetanuts ci && npm --prefix blockchain/thetanuts run build
+# The C++ engine addon is compiled by engine/binding's install script, which
+# needs the engine sources present at install time.
+COPY engine/ ./engine/
+
+RUN npm --prefix blockchain/sui ci
+RUN npm --prefix blockchain/thetanuts ci
 # Builds the native N-API addon via its install script.
 RUN npm --prefix engine/binding ci
 # Gateway deps (symlinks the file: packages); tsx runs the source directly.
 RUN npm --prefix api ci
+
+# Remaining source, then compile the two adapters the gateway links against.
+COPY blockchain/sui/ ./blockchain/sui/
+COPY blockchain/thetanuts/ ./blockchain/thetanuts/
+COPY api/ ./api/
+
+RUN npm --prefix blockchain/sui run build
+RUN npm --prefix blockchain/thetanuts run build
 
 # ---- runtime ----
 FROM node:20-bookworm-slim

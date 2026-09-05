@@ -10,6 +10,10 @@ WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 
+# Sui network baked into the frontend at build time (defaults to testnet).
+ARG VITE_SUI_NETWORK=testnet
+ENV VITE_SUI_NETWORK=$VITE_SUI_NETWORK
+
 COPY frontend/ .
 RUN npm run build
 
