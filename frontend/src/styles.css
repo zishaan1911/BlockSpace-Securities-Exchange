@@ -439,7 +439,7 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .hero-copy { padding-left: 24px; }
 .eyebrow { display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--c-243340); background: var(--c-0d151c); border-radius: 999px; color: var(--c-90a2b0); font-size: 11px; text-transform: uppercase; letter-spacing: .09em; }
 .eyebrow span { width: 7px; height: 7px; border-radius: 999px; background: var(--green); box-shadow: 0 0 12px var(--green); }
-.hero h1 { margin: 24px 0 18px; font-size: clamp(48px, 5.3vw, 78px); line-height: .98; letter-spacing: -.055em; font-weight: 760; }
+.hero h1 { margin: 24px 0 18px; font-size: clamp(30px, 3.7vw, 54px); line-height: 1.02; letter-spacing: -.045em; font-weight: 760; }
 .hero h1 em { font-style: normal; color: var(--a-ffc24d); text-shadow: 0 0 34px rgba(255,176,32,.12); }
 .hero-copy > p { max-width: 600px; color: var(--c-8f9ca8); font-size: 16px; line-height: 1.72; }
 .hero-actions { display: flex; gap: 12px; margin-top: 28px; }
@@ -719,7 +719,7 @@ input[type='number'] { -moz-appearance: textfield; appearance: textfield; }
 }
 
 @media (max-width: 560px) {
-  .hero h1 { font-size: 48px; }
+  .hero h1 { font-size: 32px; }
   .hero-actions { flex-direction: column; }
   .crystal-stage { transform: scale(.86); margin-inline: -35px; }
   .feature-row { grid-template-columns: 1fr; }

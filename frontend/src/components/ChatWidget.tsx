@@ -50,10 +50,10 @@ export function ChatWidget() {
   return (
     <div className={`chat-widget ${open ? 'chat-widget-open' : ''}`}>
       {open && (
-        <div className="chat-panel" role="dialog" aria-label="GASX platform assistant">
+        <div className="chat-panel" role="dialog" aria-label="Kora platform assistant">
           <div className="chat-panel-head">
             <div>
-              <strong>GASX Assistant</strong>
+              <strong>Kora Assistant</strong>
               <span>Ask about the platform or live EGSI stats</span>
             </div>
             <button className="chat-close" onClick={() => setOpen(false)} aria-label="Close chat">
@@ -99,11 +99,11 @@ export function ChatWidget() {
         className="chat-tab"
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
-        aria-label={open ? 'Close GASX assistant' : 'Open GASX assistant'}
-        title="Ask the GASX assistant"
+        aria-label={open ? 'Close Kora assistant' : 'Open Kora assistant'}
+        title="Ask Kora"
       >
         {open ? '×' : '✦'}
-        {!open && <span className="chat-tab-label">Ask GASX</span>}
+        {!open && <span className="chat-tab-label">Ask Kora</span>}
       </button>
     </div>
   );
