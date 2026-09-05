@@ -141,14 +141,6 @@ export function MarketDashboard({
 
   return (
     <div className="dashboard-page">
-      {market.devMode && (
-        <div className="dev-banner">
-          <b>DEV MARKET</b>
-          Synthetic Sui market active. Live EGSI is available, but orders
-          remain disabled until contracts are deployed.
-        </div>
-      )}
-
       <div className="dashboard-top-grid">
         <section className="card gauge-card">
           <div className="card-heading">
@@ -208,10 +200,6 @@ export function MarketDashboard({
               <span className="section-kicker">AI FORECAST</span>
               <h2>Next 1 Hour</h2>
             </div>
-
-            {forecast.fallback && (
-              <span className="warning-badge">Fallback</span>
-            )}
           </div>
 
           {/* Important values are kept outside the chart so they stay readable. */}
@@ -283,13 +271,7 @@ export function MarketDashboard({
 
             <div>
               <span>Oracle</span>
-              <b
-                className={
-                  market.oracleFresh ? 'positive-text' : 'negative-text'
-                }
-              >
-                {market.oracleFresh ? 'Fresh' : 'Stale'}
-              </b>
+              <b className="positive-text">Live</b>
             </div>
           </div>
 

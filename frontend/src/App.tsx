@@ -61,8 +61,7 @@ function SessionPositions({ trades }: { trades: SessionTrade[] }) {
         <div className="positions-empty">
           <b>No session trades yet.</b>
           <span>
-            Your current repository does not have a position indexer, so GASX only shows trades
-            executed in this browser session here.
+            Trades you execute in this session will appear here.
           </span>
         </div>
       )}

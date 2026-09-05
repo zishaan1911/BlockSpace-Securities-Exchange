@@ -180,7 +180,6 @@ export function TradePage({ snapshot, candles, intervalSeconds, onIntervalChange
 
   return (
     <div className="trade-page">
-      {market?.devMode && <div className="dev-banner"><b>DEV MARKET</b> The gateway is serving a synthetic market, so transaction preparation is disabled until Sui contracts are deployed.</div>}
       <div className="trade-grid">
         <section className="card order-ticket-card">
           <div className="card-heading"><div><span className="section-kicker">SUI FUTURES</span><h2>Place Order</h2></div></div>
@@ -222,7 +221,7 @@ export function TradePage({ snapshot, candles, intervalSeconds, onIntervalChange
           <label className="field"><span>Size <small>contracts · min {MIN_DISPLAY_QUANTITY}</small></span><input type="number" min={MIN_DISPLAY_QUANTITY} step={MIN_DISPLAY_QUANTITY} value={sizeInput} onChange={(e: ChangeEvent<HTMLInputElement>) => setSizeInput(e.target.value)} /></label>
           <label className="field"><span>Margin Account ID</span><input value={accountId} onChange={(e: ChangeEvent<HTMLInputElement>) => setAccountId(e.target.value)} placeholder="0x…" /></label>
           <div className="order-summary"><div><span>Notional Value</span><b>${notional.toFixed(2)}</b></div><div><span>Est. Margin</span><b>${margin.toFixed(2)}</b></div><div><span>Collateral</span><b>USDC</b></div></div>
-          <button className={`button order-button ${side === 'short' ? 'short-button' : 'button-primary'}`} disabled={!canSubmit} onClick={() => void submit()}>{!account ? 'Connect wallet to trade' : market?.devMode ? 'Deploy Sui market to trade' : busy ? 'Processing…' : 'Review & Sign  ◇'}</button>
+          <button className={`button order-button ${side === 'short' ? 'short-button' : 'button-primary'}`} disabled={!canSubmit} onClick={() => void submit()}>{!account ? 'Connect wallet to trade' : busy ? 'Processing…' : 'Review & Sign  ◇'}</button>
           {message && <div className={message.toLowerCase().includes('fail') || message.toLowerCase().includes('error') ? 'inline-error' : 'inline-message'}>{message}</div>}
         </section>
 
