@@ -136,31 +136,40 @@ for stale in "$REPO_ROOT"/contracts/gasx/Published.toml              "$REPO_ROOT
   ok "cleared stale publish record: $(basename "$stale")"
 done
 
-# stdout and stderr are merged into one file rather than captured
-# separately. The first attempt at this only captured stderr on the
-# theory that build/gas errors go there -- they did not: the actual
-# cause landed on stdout (Sui mixes diagnostic text into --json output
-# on a pre-flight failure), got captured into the now-unused PUBLISH_JSON
-# variable, and was never shown. Capturing everything into one stream
-# and printing all of it on failure cannot repeat that mistake, whatever
-# stream the CLI decides to use next.
-PUBLISH_RAW="$(mktemp)"
-if ! sui client publish --gas-budget "$GAS_BUDGET" --json "$REPO_ROOT/contracts/gasx" > "$PUBLISH_RAW" 2>&1; then
+# stdout and stderr are captured to SEPARATE files, not merged.
+#
+# Merging them was tried first and was itself a bug: on a SUCCESSFUL
+# publish, Sui writes its build-progress lines ("[NOTE] Dependencies
+# on...", "BUILDING gasx") to one stream and the clean --json payload to
+# the other. A merged capture concatenates text-then-JSON into one
+# string, which is not valid JSON at all -- so a publish that fully
+# succeeded (status success, package published, objectChanges present)
+# was reported as a failure, because jq could not parse "[NOTE]...{...}"
+# as one document. That happened for real: a publish creating package
+# 0xc0b0...25000 with all 9 modules was reported as producing "no
+# objectChanges", which was jq failing to parse, not the payload
+# actually being empty.
+#
+# So: parse ONLY stdout, which is where --json puts the actual payload
+# on success. If that parse fails for any reason, print BOTH files --
+# stdout and stderr -- so a genuine failure still shows everything,
+# regardless of which stream the CLI used to explain itself.
+PUBLISH_OUT="$(mktemp)"
+PUBLISH_ERR="$(mktemp)"
+sui client publish --gas-budget "$GAS_BUDGET" --json "$REPO_ROOT/contracts/gasx"   > "$PUBLISH_OUT" 2> "$PUBLISH_ERR"
+PUBLISH_STATUS=$?
+
+if [ "$PUBLISH_STATUS" -ne 0 ] || ! PUBLISH_JSON="$(jq -e '.objectChanges' "$PUBLISH_OUT" >/dev/null 2>&1 && cat "$PUBLISH_OUT")"; then
   echo
-  echo "--- sui client publish failed ---"
-  cat "$PUBLISH_RAW"
-  rm -f "$PUBLISH_RAW"
-  die "publish failed (see the full output above)."
+  echo "--- sui client publish did not produce a usable result ---"
+  echo "-- stderr --"
+  cat "$PUBLISH_ERR"
+  echo "-- stdout --"
+  cat "$PUBLISH_OUT"
+  rm -f "$PUBLISH_OUT" "$PUBLISH_ERR"
+  die "publish failed or returned an unexpected payload (see the full output above)."
 fi
-PUBLISH_JSON="$(cat "$PUBLISH_RAW")"
-if ! echo "$PUBLISH_JSON" | jq -e '.objectChanges' >/dev/null 2>&1; then
-  echo
-  echo "--- publish produced no objectChanges ---"
-  cat "$PUBLISH_RAW"
-  rm -f "$PUBLISH_RAW"
-  die "publish did not return the expected payload (see the full output above)."
-fi
-rm -f "$PUBLISH_RAW"
+rm -f "$PUBLISH_OUT" "$PUBLISH_ERR"
 
 PACKAGE_ID="$(echo "$PUBLISH_JSON" | jq -r '
   .objectChanges[] | select(.type == "published") | .packageId')"
