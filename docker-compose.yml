@@ -1,0 +1,62 @@
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: gasx
+      MYSQL_USER: gasx
+      MYSQL_PASSWORD: gasx
+      MYSQL_ROOT_PASSWORD: gasx
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./database/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-pgasx"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  ai:
+    build:
+      context: .
+      dockerfile: Dockerfile.ai
+    restart: unless-stopped
+    environment:
+      GASX_AI_ETHEREUM_RPC_URL: ${GASX_AI_ETHEREUM_RPC_URL:-https://ethereum-rpc.publicnode.com}
+      GASX_AI_CYCLE_INTERVAL_SECONDS: ${GASX_AI_CYCLE_INTERVAL_SECONDS:-12}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    restart: unless-stopped
+    environment:
+      GASX_API_AI_SERVICE_URL: http://ai:8000
+      GASX_API_DATABASE_URL: mysql://gasx:gasx@mysql:3306/gasx
+      GASX_SUI_DEV_MARKET: "true"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      ai:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+
+volumes:
+  mysql-data:
