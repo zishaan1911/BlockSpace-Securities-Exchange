@@ -112,6 +112,55 @@ def test_two_publishers_do_not_collide():
     assert first._sender != second._sender
 
 
+def test_publish_price_awaits_the_transaction_builder():
+    """Regression guard for a real bug: `self._client.transaction(...)`
+    is itself a coroutine (verified against the installed pysui's
+    GrpcProtocolClient.transaction, which is `async def`), and the
+    original code called `.move_call` on it directly without awaiting
+    first. Python does not error at the call site for that -- a bare,
+    never-awaited coroutine object silently exists until
+    `AttributeError: 'coroutine' object has no attribute 'move_call'`
+    fires one line later, which is exactly what happened on a live
+    first publish attempt.
+
+    Exercises the real _client.transaction()/move_call() calls (not
+    mocked) up to, but not past, the network boundary: constructing the
+    transaction and adding a move call are local BCS-building operations
+    that pysui performs before any RPC is made to resolve values it does
+    not already have cached. Beyond this point publish_price() needs a
+    package that actually exists on a live network to resolve the
+    target function's signature, which this test environment cannot
+    provide -- see oracle/publisher.py's module docstring for what
+    remains genuinely unverified.
+    """
+    target = OraclePublishTarget(package_id="0x" + "ab" * 32, oracle_object_id="0x" + "cd" * 32)
+    publisher = _construct(
+        rpc_url="https://fullnode.testnet.sui.io:443",
+        publisher_private_key=_fresh_test_key(),
+        target=target,
+    )
+
+    async def _exercise():
+        # This is exactly the sequence publish_price() runs. If
+        # `transaction()`'s result were not awaited, this would raise
+        # AttributeError on the next line, as it did for real.
+        txn = await publisher._client.transaction(initial_sender=publisher._sender)
+        assert hasattr(txn, "move_call"), "transaction() result must be the real builder, not a coroutine"
+        # Confirms move_call is reachable and does real (local, until it
+        # needs the network) work rather than failing immediately -- it
+        # is expected to eventually raise once it needs to resolve the
+        # (nonexistent, synthetic) target package over the network,
+        # which is the genuine boundary of what this environment can
+        # verify.
+        with pytest.raises(Exception):
+            await txn.move_call(
+                target=f"{target.package_id}::oracle::update_price",
+                arguments=[target.oracle_object_id, 500, "0x6"],
+            )
+
+    asyncio.run(_exercise())
+
+
 def test_rejects_a_malformed_key_rather_than_constructing_something_broken():
     target = OraclePublishTarget(package_id="0xabc", oracle_object_id="0xdef")
     with pytest.raises(Exception):

@@ -160,7 +160,17 @@ class OraclePublisher:
         """
         _validate_price(price)
 
-        txn = self._client.transaction(initial_sender=self._sender)
+        # transaction() is itself a coroutine (it returns a unified
+        # AsyncSuiTransaction for the gRPC protocol) -- verified directly
+        # against the installed pysui 1.4.1's GrpcProtocolClient.transaction,
+        # which is `async def` and does real async work to construct the
+        # builder. Missing this await was a real bug: `txn` was a bare,
+        # never-awaited coroutine object, and `txn.move_call` failed with
+        # AttributeError rather than doing anything -- Python does not
+        # warn about an unawaited coroutine at the call site, only (if at
+        # all) with an easy-to-miss "coroutine was never awaited" warning
+        # emitted later, at garbage-collection time.
+        txn = await self._client.transaction(initial_sender=self._sender)
         await txn.move_call(
             target=f"{self._target.package_id}::oracle::update_price",
             arguments=[self._target.oracle_object_id, price, SUI_CLOCK_OBJECT_ID],
