@@ -1,0 +1,40 @@
+# GASX API gateway. Builds the C++ order-engine addon plus the two chain
+# adapters it links against, then runs the Fastify gateway.
+#
+# Build context is the repo root: the gateway depends on ../blockchain/sui,
+# ../blockchain/thetanuts and ../engine/binding as npm `file:` packages.
+
+# ---- build ----
+FROM node:20-bookworm-slim AS build
+
+# node-gyp needs python3 + make + g++ to compile the C++ engine addon.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 make g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY . .
+
+# Adapters (tsc -> dist) that the gateway imports via file: deps.
+RUN npm --prefix blockchain/sui ci && npm --prefix blockchain/sui run build
+RUN npm --prefix blockchain/thetanuts ci && npm --prefix blockchain/thetanuts run build
+# Builds the native N-API addon via its install script.
+RUN npm --prefix engine/binding ci
+# Gateway deps (symlinks the file: packages); tsx runs the source directly.
+RUN npm --prefix api ci
+
+# ---- runtime ----
+FROM node:20-bookworm-slim
+
+WORKDIR /app
+
+COPY --from=build /app/blockchain ./blockchain
+COPY --from=build /app/engine/binding ./engine/binding
+COPY --from=build /app/api ./api
+
+WORKDIR /app/api
+
+EXPOSE 3000
+
+CMD ["npx", "tsx", "src/index.ts"]
