@@ -1,4 +1,4 @@
-# GASX — Ethereum Gas Futures Exchange on Sui
+# GASX - Ethereum Gas Futures Exchange on Sui
 
 > **AI-native gas futures exchange on Sui, hedged with Thetanuts**
 
