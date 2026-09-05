@@ -8,10 +8,18 @@ bypassing the TypeScript API gateway/Sui adapter for this specific write.
 NOT exercised against a live Sui network in Claude's sandbox — there is
 no network egress to any Sui RPC there, and this deliberately never
 receives a real private key regardless (GLOSSARY.md's Golden Rules:
-"Private keys never go in code, git, or logs"). Only _validate_price()
-is unit-tested directly; publish_price() itself needs verification
-against Sui testnet from your machine, with a funded throwaway publisher
-key, before you trust it.
+"Private keys never go in code, git, or logs"). _validate_price() is
+unit-tested directly. The pysui config bootstrap in __init__ (building
+an isolated group from a raw key, independent of ~/.pysui) has been
+exercised directly against the actually-installed pysui package with a
+synthetic throwaway key, catching two real bugs this way:
+PysuiConfiguration(persist=False) unconditionally requiring an
+already-existing ~/.pysui/PysuiConfig.json regardless of persist, and
+GroupProtocol.GRAPHQL being used instead of GRPC. publish_price()
+itself — the actual move_call/build_and_sign/execute path — still needs
+verification against Sui testnet from your machine with a funded
+throwaway publisher key before you trust it; that part cannot be
+exercised without live network access.
 
 A note on pysui's API: this targets pysui 1.4.x's *current*, async,
 PysuiConfiguration/client_factory path, verified by introspecting the
@@ -28,6 +36,9 @@ shape multiple times.
 from __future__ import annotations
 
 from dataclasses import dataclass
+
+import tempfile
+from pathlib import Path
 
 from pysui import ExecuteTransaction, GroupProtocol, NetworkType, PysuiConfiguration, client_factory
 
@@ -72,14 +83,48 @@ class OraclePublisher:
         hard-coded here.
 
         Builds a throwaway, in-memory pysui config group scoped to this
-        one key + RPC endpoint (persist=False throughout) rather than
-        depending on whatever's already in ~/.pysui on the host — this
-        service should be fully specified by its own environment
-        variables, not ambient machine state.
+        one key + RPC endpoint rather than depending on whatever's
+        already in ~/.pysui on the host — this service should be fully
+        specified by its own environment variables, not ambient machine
+        state.
+
+        `PysuiConfiguration(persist=False)` cannot be used to get a
+        starting instance here: that constructor unconditionally
+        requires ~/.pysui/PysuiConfig.json to already exist and raises
+        ValueError otherwise, regardless of `persist` -- `persist` only
+        controls whether *later* changes are written back, and does
+        nothing about needing the file to exist in the first place. That
+        was this code's actual bug: on a machine that had never run
+        pysui before, __init__ raised before this class's own key/group
+        setup ever ran. Verified directly against the installed pysui
+        1.4.1's source (PysuiConfiguration.__init__ in
+        sui_common/config/pysui_config.py) rather than assumed.
+
+        The fix bootstraps a fresh, empty config via the classmethod the
+        library's own error message points to
+        (`PysuiConfiguration.initialize_config`), in a fresh temporary
+        directory rather than ~/.pysui -- initialize_config always
+        writes an (empty, keyless) config file to disk with no way to
+        opt out, so an ephemeral directory keeps that side effect from
+        ever touching real host state or accumulating across runs.
+        `new_group(..., persist=False)` then adds this run's actual key
+        material in memory only; it is never written to that file.
+
+        Also fixed here: the pysui group was built with
+        GroupProtocol.GRAPHQL, not GRPC. That is inconsistent with
+        `rpc_url`, which is the same gRPC endpoint used everywhere else
+        in this project (blockchain/sui's adapter, the frontend's
+        dapp-kit) specifically because Sui switched JSON-RPC off on
+        public fullnodes -- GraphQL is a third, different protocol from
+        both, and client_factory would have built a client speaking the
+        wrong protocol against this URL.
         """
         self._target = target
-        config = PysuiConfiguration(persist=False)
-        config.new_group(
+        bootstrap = PysuiConfiguration.initialize_config(
+            in_folder=Path(tempfile.mkdtemp(prefix="gasx-pysui-")),
+            init_groups=[{"name": "gasx-bootstrap", "make_active": True}],
+        )
+        bootstrap.new_group(
             group_name="gasx-oracle-publisher",
             profile_block=[
                 {
@@ -93,12 +138,12 @@ class OraclePublisher:
             ],
             key_block=[{"key_string": publisher_private_key, "alias": "gasx-oracle-publisher"}],
             active_address_index=0,
-            group_protocol=GroupProtocol.GRAPHQL,
+            group_protocol=GroupProtocol.GRPC,
             make_group_active=True,
             persist=False,
         )
-        self._sender = config.active_address
-        self._client = client_factory(config)
+        self._sender = bootstrap.active_address
+        self._client = client_factory(bootstrap)
 
     async def publish_price(self, price: int) -> str:
         """Submits gasx::oracle::update_price(oracle, price, clock).

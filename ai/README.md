@@ -173,6 +173,18 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 venv/bin/pytest
   feature set (which would silently produce garbage). In both cases the
   service keeps serving its honest fallback and the UI keeps saying so.
   That refusal is the design working, not a bug to route around.
+- **The oracle publisher's pysui bootstrap is now exercised directly**
+  (`tests/test_oracle_publisher_bootstrap.py`), against the real
+  installed pysui package, not a mock. This caught two real bugs on a
+  live machine attempting its first publish:
+  `PysuiConfiguration(persist=False)` unconditionally requiring an
+  already-existing `~/.pysui/PysuiConfig.json` regardless of `persist`
+  (fixed by bootstrapping via `initialize_config` in a fresh temp
+  directory instead), and the pysui group being built with
+  `GroupProtocol.GRAPHQL` instead of `GRPC` — inconsistent with the rest
+  of the project's gRPC migration. `publish_price()`'s actual
+  move_call/build_and_sign/execute path still has not been exercised
+  against a live network and remains the thing to verify next.
 - **`inference/train.py` can still run against synthetic data via
   `--synthetic`** — there's no real accumulated EGSI history for a
   market that doesn't exist yet. This proves the train -> save -> load
