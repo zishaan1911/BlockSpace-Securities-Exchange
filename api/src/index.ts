@@ -42,6 +42,7 @@ const app = buildServer({
   aiClient,
   riskPolicy: config.riskPolicy,
   exposureConfig: config.exposureConfig,
+  groq: config.groq,
 });
 
 /**

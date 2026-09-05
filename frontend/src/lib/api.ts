@@ -267,8 +267,8 @@ export function normaliseMarket(payload: unknown): MarketSnapshot {
       mid,
     },
     orderbook: {
-      asks: normaliseLevels(first(orderbook, ['asks', 'sell'])),
-      bids: normaliseLevels(first(orderbook, ['bids', 'buy'])),
+      asks: normaliseLevels(first(orderbook, ['asks', 'sell', 'bestAsk', 'best_ask'])),
+      bids: normaliseLevels(first(orderbook, ['bids', 'buy', 'bestBid', 'best_bid'])),
       indicative: bool(orderbook, ['indicative'], true),
     },
   };
@@ -397,8 +397,12 @@ function normaliseCandle(item: unknown): Candle | null {
   return null;
 }
 
-export async function getCandles(): Promise<Candle[]> {
-  const payload = await request('/api/v1/candles');
+/** `intervalSeconds` is the candle bucket width the gateway aggregates
+ * EGSI readings into (e.g. 60 = 1m, 3600 = 1h). Defaults to the
+ * gateway's own default (300s / 5m) when omitted. */
+export async function getCandles(intervalSeconds?: number): Promise<Candle[]> {
+  const query = intervalSeconds ? `?interval=${intervalSeconds}` : '';
+  const payload = await request(`/api/v1/candles${query}`);
   const source = findHistoryArray(payload);
 
   const byTime = new Map<number, Candle>();
@@ -409,26 +413,6 @@ export async function getCandles(): Promise<Candle[]> {
   }
 
   return [...byTime.values()].sort((a, b) => a.time - b.time);
-}
-
-async function postVariants(path: string, variants: JsonObject[]): Promise<unknown> {
-  let lastError: unknown;
-
-  for (const body of variants) {
-    try {
-      return await request(path, {
-        method: 'POST',
-        body: JSON.stringify(body),
-      });
-    } catch (error) {
-      lastError = error;
-      const status = (error as { status?: number }).status;
-
-      if (status && ![400, 422].includes(status)) throw error;
-    }
-  }
-
-  throw lastError instanceof Error ? lastError : new Error('Request failed');
 }
 
 export interface PrepareOrderInput {
@@ -443,37 +427,30 @@ export interface PrepareOrderInput {
 export async function prepareOrder(
   input: PrepareOrderInput,
 ): Promise<{ transaction: string; raw: unknown }> {
-  const sideUpper = input.side === 'long' ? 'BUY' : 'SELL';
-
-  const payload = await postVariants('/api/v1/orders/prepare', [
-    {
-      marketId: input.marketId,
+  // The real gateway (api/src/routes/orders.ts's validatePrepareOrderBody)
+  // requires EXACTLY { trader, marginAccountId, isBid, price, quantity } --
+  // no marketId field at all (there is only one market), isBid a real
+  // boolean rather than a side string. None of this function's previous
+  // three guessed variants (owner/side, market_id/side, sender/size)
+  // matched that shape, so every order submission was rejected by the
+  // gateway's own validation with 400 before ever reaching the chain
+  // adapter -- placing an order could never succeed. This is the one,
+  // verified-correct shape; postVariants's guess-and-retry is no longer
+  // needed for this call.
+  const payload = await request('/api/v1/orders/prepare', {
+    method: 'POST',
+    body: JSON.stringify({
+      trader: input.owner,
       marginAccountId: input.accountId,
-      owner: input.owner,
-      side: sideUpper,
+      isBid: input.side === 'long',
       price: input.price,
       quantity: input.quantity,
-    },
-    {
-      market_id: input.marketId,
-      margin_account_id: input.accountId,
-      owner: input.owner,
-      side: sideUpper,
-      price: input.price,
-      quantity: input.quantity,
-    },
-    {
-      market: input.marketId,
-      accountId: input.accountId,
-      sender: input.owner,
-      side: sideUpper,
-      price: input.price,
-      size: input.quantity,
-    },
-  ]);
+    }),
+  });
 
   const root = rec(payload);
   const transaction = first(root, [
+    'transactionJson',
     'transaction',
     'transaction_bytes',
     'transactionBytes',
@@ -491,27 +468,28 @@ export async function prepareOrder(
   return { transaction, raw: payload };
 }
 
-export async function assessHedge(
-  netPosition: number,
-  market = 'EGSI-1H',
-): Promise<unknown> {
-  return postVariants('/api/v1/hedge/assess', [
-    { market, netPosition },
-    { market, net_position: netPosition },
-    { position: netPosition, market },
-  ]);
+// The real gateway (api/src/routes/hedge.ts's validateExposureBody)
+// requires EXACTLY { netContracts: number, egsiLevel: number }. It never
+// accepted a `market` field (there is only one market) or `assessment`
+// (evaluate recomputes exposure itself; it does not take a previous
+// result as input), and never recognised netPosition/net_position/
+// position -- none of the three previously-guessed shapes for either
+// call included egsiLevel at all, so every assess/evaluate request was
+// rejected with 400 before any real exposure math ran. egsiLevel must be
+// the CURRENT EGSI score (the caller has to have it already -- see
+// HedgePage, which now passes snapshot.egsi.score).
+export async function assessHedge(netContracts: number, egsiLevel: number): Promise<unknown> {
+  return request('/api/v1/hedge/assess', {
+    method: 'POST',
+    body: JSON.stringify({ netContracts, egsiLevel }),
+  });
 }
 
-export async function evaluateHedge(
-  netPosition: number,
-  assessment?: unknown,
-  market = 'EGSI-1H',
-): Promise<unknown> {
-  return postVariants('/api/v1/hedge/evaluate', [
-    { market, netPosition, assessment },
-    { market, net_position: netPosition, assessment },
-    { position: netPosition, assessment, market },
-  ]);
+export async function evaluateHedge(netContracts: number, egsiLevel: number): Promise<unknown> {
+  return request('/api/v1/hedge/evaluate', {
+    method: 'POST',
+    body: JSON.stringify({ netContracts, egsiLevel }),
+  });
 }
 
 export function pretty(value: unknown): string {
@@ -535,4 +513,22 @@ export function pickNumber(value: unknown, keys: string[], fallback = Number.NaN
 
 export function pickBoolean(value: unknown, keys: string[], fallback = false): boolean {
   return bool(rec(value), keys, fallback);
+}
+
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export async function sendChatMessage(messages: ChatMessage[]): Promise<string> {
+  const payload = await request('/api/v1/chat', {
+    method: 'POST',
+    body: JSON.stringify({ messages }),
+  });
+  const root = rec(payload);
+  const reply = str(root, ['reply'], '');
+  if (!reply) {
+    throw new Error('The assistant did not return a reply.');
+  }
+  return reply;
 }

@@ -176,3 +176,78 @@ an approval states plainly that nothing was traded.
   (`POST /api/v1/account/prepare-open`) is wired in the API client but
   has no button yet; the account id is expected to come from the Sui CLI
   for now.
+
+## Wiring fixes and additions (this session)
+
+The "Status/Design" sections above describe an earlier build. The UI has
+since been substantially reworked (Landing page, MarketDashboard,
+TradePage, HedgePage, AnalyticsPage) in work done outside this specific
+session -- this section covers what was found and fixed in *that*
+codebase, not a rewrite of the sections above, which are now stale and
+worth revisiting separately.
+
+**Real, confirmed bugs, found by reading the actual gateway route code
+and comparing it to what the frontend sent/expected — not guessed:**
+
+- **Placing an order could never succeed.** `prepareOrder` sent
+  `{marketId, owner, side: 'BUY'/'SELL', ...}` in three guessed variants;
+  the real gateway (`api/src/routes/orders.ts`) requires exactly
+  `{trader, marginAccountId, isBid: boolean, price, quantity}`. None of
+  the guesses matched, so every order was rejected with 400 before ever
+  reaching the chain adapter. Fixed to send the one real shape directly.
+- **Requesting a hedge could never succeed**, same root cause — the real
+  gateway needs `{netContracts, egsiLevel}`, and `egsiLevel` (the current
+  EGSI score) was never even sent. Fixed, including plumbing the live
+  score from `HedgePage` into both calls.
+- **Oracle freshness always reported "Fresh"**, regardless of the real
+  on-chain state — it read a flat `oracleFresh` field that never existed
+  on the response, instead of the real nested
+  `market.oracle.{hasPrice,isFreshApprox}`. This actively misrepresented
+  the market's actual state.
+- **Margin estimates were always wrong** — `marginRate` doesn't exist on
+  the real response; the real field is `marginRatioBps` (basis points).
+  Every caller silently fell back to a guessed 20% instead of the real
+  configured ratio.
+- **The order-book depth ladder was structurally always empty.** The real
+  gateway's C++-engine-derived quote returns a single `bestBid`/`bestAsk`
+  object, never an `asks[]`/`bids[]` array — `normaliseLevels` only ever
+  recognised the array shape. Fixed to accept both.
+- **The 1m/5m/1h/4h/1d timeframe buttons had no `onClick` at all** —
+  clicking any of them did nothing. Wired end-to-end: `getCandles` now
+  takes an `intervalSeconds` param, `App.tsx` holds the selection as
+  shared state, and switching it triggers an immediate refetch at the
+  new bucket width.
+- **Charts were destroyed and recreated on every 15s poll**, resetting
+  the user's zoom/pan each time, because chart creation was keyed to
+  `[candles]`, a new array reference every refresh. Split into a
+  creation effect (runs once) and a data-update effect (`setData()`
+  only), with `fitContent()` called only on the first real data arrival.
+- Two pre-existing TypeScript errors in `main.tsx` (a missing
+  `vite-env.d.ts`, and a `Network` type mismatch — `SuiClientTypes.Network`
+  is deliberately `'mainnet' | 'testnet' | ... | (string & {})`, an open
+  type a narrower two-value callback can't satisfy).
+
+**New: single "Markets" page.** The four sections (Overview, Trade,
+Hedge, Analytics) previously lived behind separate top-level tabs, so
+only one was ever visible at a time. They now all render together on one
+page; the same four nav buttons just smooth-scroll to a section instead
+of switching what's rendered. An explicit "Home" nav button was added
+alongside the existing brand-logo-click behaviour.
+
+**New: floating chat assistant**, backed by Groq. `POST /api/v1/chat`
+(new gateway route) holds `GASX_API_GROQ_API_KEY` server-side — it never
+reaches the browser — and grounds every response in the platform's real,
+current EGSI score and forecast (fetched the same way `GET
+/api/v1/market` already does), so "what's the current EGSI" gets a real
+answer rather than a hallucinated one. Model defaults to
+`openai/gpt-oss-20b`; `llama-3.3-70b-versatile`, which most Groq examples
+still show, was deprecated in 2026-07 — verified against Groq's current
+docs rather than assumed. Rendered as a persistent floating tab
+(`ChatWidget.tsx`), not a nav destination, so it's reachable from the
+landing page or the app view alike.
+
+Verified: `api` 89/89 (12 new for the chat route), `frontend` 40/40,
+both typecheck clean, a real `vite build`, and every changed module
+served through Vite against a mock carrying exactly the response shapes
+that were previously mishandled (`devMode: true`, `oracle.hasPrice:
+false`, singular `bestBid`/`bestAsk`) with zero console errors.
