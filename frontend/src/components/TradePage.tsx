@@ -2,7 +2,7 @@ import { useCurrentAccount, useDAppKit } from '@mysten/dapp-kit-react';
 import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import type { Candle, MarketSnapshot } from '../lib/api';
 import { prepareOrder } from '../lib/api';
-import { CandleChart } from './Charts';
+import { PriceChart, type ChartMode } from './Charts';
 
 export interface SessionTrade {
   digest: string;
@@ -76,6 +76,7 @@ export function TradePage({ snapshot, candles, intervalSeconds, onIntervalChange
   const dAppKit = useDAppKit();
   const [side, setSide] = useState<'long' | 'short'>('long');
   const [orderType, setOrderType] = useState<'limit' | 'market'>('limit');
+  const [chartMode, setChartMode] = useState<ChartMode>('candle');
   const [displayQuantity, setDisplayQuantity] = useState(0.05);
   const market = snapshot?.market;
   const tickSize = Number.isFinite(market?.tickSize) ? market!.tickSize! : 1;
@@ -222,18 +223,24 @@ export function TradePage({ snapshot, candles, intervalSeconds, onIntervalChange
         </section>
 
         <section className="card price-chart-card">
-          <div className="card-heading chart-heading"><div><span className="section-kicker">EGSI MARKET</span><h2>Price Chart</h2></div><div className="timeframes">
-            {TIMEFRAMES.map((tf) => (
-              <button
-                key={tf.seconds}
-                className={tf.seconds === intervalSeconds ? 'active' : ''}
-                onClick={() => onIntervalChange(tf.seconds)}
-              >
-                {tf.label}
-              </button>
-            ))}
+          <div className="card-heading chart-heading"><div><span className="section-kicker">EGSI MARKET</span><h2>Price Chart</h2></div><div className="chart-heading-controls">
+            <div className="timeframes">
+              <button className={chartMode === 'line' ? 'active' : ''} onClick={() => setChartMode('line')}>Line</button>
+              <button className={chartMode === 'candle' ? 'active' : ''} onClick={() => setChartMode('candle')}>Candle</button>
+            </div>
+            <div className="timeframes">
+              {TIMEFRAMES.map((tf) => (
+                <button
+                  key={tf.seconds}
+                  className={tf.seconds === intervalSeconds ? 'active' : ''}
+                  onClick={() => onIntervalChange(tf.seconds)}
+                >
+                  {tf.label}
+                </button>
+              ))}
+            </div>
           </div></div>
-          <div className="main-candle-chart">{candles.length ? <CandleChart candles={candles} /> : <div className="chart-empty">Waiting for candle history…</div>}</div>
+          <div className="main-candle-chart">{candles.length ? <PriceChart candles={candles} mode={chartMode} /> : <div className="chart-empty">Waiting for candle history…</div>}</div>
           <div className="chart-metrics">
             <div><strong>{lastCandle ? lastCandle.close.toFixed(1) : bestReferencePrice.toFixed(1)}</strong><span>Last EGSI</span></div>
             <div><strong className={change !== null && change < 0 ? 'negative-text' : 'positive-text'}>{change === null ? '—' : `${change >= 0 ? '+' : ''}${change.toFixed(1)}%`}</strong><span>24h Change</span></div>

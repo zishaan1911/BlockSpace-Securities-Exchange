@@ -55,8 +55,13 @@ export function HedgePage({
 }: {
   snapshot: MarketSnapshot | null;
 }) {
-  const [position, setPosition] =
-    useState(5);
+  // Keep the input as a raw string so the user can clear and type freely
+  // (Number('') coerces to 0 mid-edit, which made the old box jump around).
+  // The number is derived only when assess/evaluate actually needs it.
+  const [positionInput, setPositionInput] =
+    useState('5');
+
+  const position = Number(positionInput) || 0;
 
   const [
     assessment,
@@ -406,21 +411,10 @@ export function HedgePage({
 
               <input
                 type="number"
-                value={position}
+                value={positionInput}
                 onChange={(
                   event: ChangeEvent<HTMLInputElement>,
-                ) => {
-                  const next =
-                    Number(
-                      event.target.value,
-                    );
-
-                  setPosition(
-                    Number.isFinite(next)
-                      ? next
-                      : 0,
-                  );
-                }}
+                ) => setPositionInput(event.target.value)}
               />
             </label>
 

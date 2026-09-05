@@ -1,4 +1,4 @@
-import type { Candle, MarketSnapshot } from '../lib/api';
+import type { MarketSnapshot } from '../lib/api';
 import {
   bandLabel,
   formatComponent,
@@ -6,7 +6,6 @@ import {
   stressBand,
   timeToExpiry,
 } from '../lib/egsi';
-import { TrendChart } from './Charts';
 import { EgsiGauge } from './EgsiGauge';
 
 function driverLabel(key: string) {
@@ -59,8 +58,8 @@ function ForecastSlope({ current, expected }: { current: number; expected: numbe
     >
       <defs>
         <linearGradient id="forecastFill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#83a7ff" stopOpacity=".26" />
-          <stop offset="1" stopColor="#83a7ff" stopOpacity="0" />
+          <stop offset="0" stopColor="#ffb63d" stopOpacity=".26" />
+          <stop offset="1" stopColor="#ffb63d" stopOpacity="0" />
         </linearGradient>
       </defs>
 
@@ -78,26 +77,24 @@ function ForecastSlope({ current, expected }: { current: number; expected: numbe
       <path
         d={linePath}
         fill="none"
-        stroke="#86a7ff"
+        stroke="#ffb63d"
         strokeWidth="3"
         strokeLinecap="round"
       />
 
-      <circle cx={startX} cy={startY} r="4" fill="#9bb7ff" />
-      <circle cx={endX} cy={endY} r="5" fill="#eef5ff" stroke="#6f9eff" strokeWidth="2" />
+      <circle cx={startX} cy={startY} r="4" fill="#ffcc77" />
+      <circle cx={endX} cy={endY} r="5" fill="#fff4e0" stroke="#ffb020" strokeWidth="2" />
     </svg>
   );
 }
 
 export function MarketDashboard({
   snapshot,
-  candles,
   loading,
   error,
   onTrade,
 }: {
   snapshot: MarketSnapshot | null;
-  candles: Candle[];
   loading: boolean;
   error: string;
   onTrade: () => void;
@@ -116,18 +113,6 @@ export function MarketDashboard({
   const drivers = Object.entries(egsi.components)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5);
-
-  const closes = candles.map((candle) => candle.close);
-  const firstClose = closes[0];
-  const latestClose = closes.at(-1);
-
-  const dayChange =
-    closes.length > 1 &&
-    firstClose !== undefined &&
-    firstClose !== 0 &&
-    latestClose !== undefined
-      ? ((latestClose - firstClose) / firstClose) * 100
-      : null;
 
   const expiry = market.expiryMs ? timeToExpiry(market.expiryMs) : null;
   const price = quote.mid ?? forecast.expected;
@@ -178,60 +163,6 @@ export function MarketDashboard({
           </div>
 
           <EgsiGauge score={egsi.score} />
-        </section>
-
-        <section className="card trend-card">
-          <div className="card-heading">
-            <div>
-              <span className="section-kicker">NETWORK</span>
-              <h2>24h Trend</h2>
-            </div>
-
-            <span
-              className={`trend-badge ${
-                dayChange !== null && dayChange < 0 ? 'negative' : ''
-              }`}
-            >
-              {dayChange === null
-                ? '—'
-                : `${dayChange >= 0 ? '+' : ''}${dayChange.toFixed(1)}%`}
-            </span>
-          </div>
-
-          <div className="trend-chart-wrap">
-            {candles.length ? (
-              <TrendChart candles={candles} />
-            ) : (
-              <div className="chart-empty">Waiting for EGSI history…</div>
-            )}
-          </div>
-
-          <div className="metric-strip">
-            <div>
-              <strong
-                className={
-                  dayChange !== null && dayChange < 0
-                    ? 'negative-text'
-                    : 'positive-text'
-                }
-              >
-                {dayChange === null
-                  ? '—'
-                  : `${dayChange >= 0 ? '+' : ''}${dayChange.toFixed(1)}%`}
-              </strong>
-              <span>24h change</span>
-            </div>
-
-            <div>
-              <strong>{formatConfidence(forecast.confidence)}</strong>
-              <span>Forecast confidence</span>
-            </div>
-
-            <div>
-              <strong>15s</strong>
-              <span>Market refresh</span>
-            </div>
-          </div>
         </section>
       </div>
 

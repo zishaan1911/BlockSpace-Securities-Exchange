@@ -229,19 +229,16 @@ export default function App() {
 
   return (
     <>
+      <AppHeader
+        onMarkets={goToMarkets}
+        onConnect={() => setWalletOpen(true)}
+        onHome={() => setView('landing')}
+      />
+
       {view === 'landing' ? (
-        <LandingPage
-          onLaunch={() => goToMarkets()}
-          onConnect={() => setWalletOpen(true)}
-        />
+        <LandingPage onLaunch={() => goToMarkets()} />
       ) : (
         <div className="app-shell">
-          <AppHeader
-            onMarkets={goToMarkets}
-            onConnect={() => setWalletOpen(true)}
-            onHome={() => setView('landing')}
-          />
-
           <main className="app-main">
             {marketError && (
               <div className="top-error">
@@ -264,7 +261,6 @@ export default function App() {
             <div id="section-overview">
               <MarketDashboard
                 snapshot={snapshot}
-                candles={candles}
                 loading={loading}
                 error={marketError}
                 onTrade={() => goToMarkets('section-trade')}

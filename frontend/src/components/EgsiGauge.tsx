@@ -36,11 +36,11 @@ export function EgsiGauge({ score }: { score: number }) {
 
         {/* 270° background track */}
         <circle
+          className="gauge-track"
           cx={cx}
           cy={cy}
           r={radius}
           fill="none"
-          stroke="#1b2833"
           strokeWidth="13"
           strokeLinecap="round"
           strokeDasharray={`${arcLength} ${circumference}`}

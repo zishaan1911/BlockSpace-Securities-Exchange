@@ -4,6 +4,7 @@ import { createDAppKit, DAppKitProvider } from '@mysten/dapp-kit-react';
 import { SuiGrpcClient } from '@mysten/sui/grpc';
 import type { SuiClientTypes } from '@mysten/sui/client';
 import App from './App';
+import { ThemeProvider } from './theme';
 
 const configuredNetwork: 'mainnet' | 'testnet' =
   import.meta.env.VITE_SUI_NETWORK === 'mainnet' ? 'mainnet' : 'testnet';
@@ -42,8 +43,10 @@ declare module '@mysten/dapp-kit-react' {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <DAppKitProvider dAppKit={dAppKit}>
-      <App />
-    </DAppKitProvider>
+    <ThemeProvider>
+      <DAppKitProvider dAppKit={dAppKit}>
+        <App />
+      </DAppKitProvider>
+    </ThemeProvider>
   </React.StrictMode>,
 );

@@ -1,6 +1,5 @@
 import type { Candle, MarketSnapshot } from '../lib/api';
 import { rsi, macd, sma, summarise } from '../lib/indicators';
-import { CandleChart } from './Charts';
 
 export function AnalyticsPage({ snapshot, candles }: { snapshot: MarketSnapshot | null; candles: Candle[] }) {
   const closes = candles.map((c) => c.close);
@@ -11,9 +10,8 @@ export function AnalyticsPage({ snapshot, candles }: { snapshot: MarketSnapshot 
   const summary = summarise(closes);
   return (
     <div className="analytics-page">
-      <section className="card analytics-hero-card">
+      <section className="card">
         <div className="card-heading"><div><span className="section-kicker">EGSI ANALYTICS</span><h2>Network Momentum</h2></div><span className={`analysis-tone tone-${summary.tone}`}>{summary.label}</span></div>
-        <div className="analytics-chart">{candles.length ? <CandleChart candles={candles} /> : <div className="chart-empty">Waiting for history…</div>}</div>
       </section>
       <div className="analytics-metrics">
         <section className="card"><span>Current EGSI</span><strong>{Math.round(snapshot?.egsi.score ?? 0)}</strong><small>0–1000 stress index</small></section>

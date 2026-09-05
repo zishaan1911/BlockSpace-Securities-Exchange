@@ -4,6 +4,7 @@ import {
   useWalletConnection,
 } from '@mysten/dapp-kit-react';
 import { Brand } from './Brand';
+import { useTheme } from '../theme';
 
 // Section ids on the single, unified Markets page (App.tsx). These are no
 // longer separate views to switch between -- clicking one just scrolls
@@ -38,6 +39,7 @@ export function AppHeader({
   const network = useCurrentNetwork();
   const connection = useWalletConnection();
   const dAppKit = useDAppKit();
+  const { theme, toggle } = useTheme();
 
   const walletConnected = connection.status === 'connected' && connection.account !== null;
   const walletBusy = connection.status === 'connecting' || connection.status === 'reconnecting';
@@ -83,6 +85,15 @@ export function AppHeader({
       </nav>
 
       <div className="header-actions">
+        <button
+          className="theme-toggle"
+          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          onClick={toggle}
+          aria-label="Toggle theme"
+        >
+          {theme === 'dark' ? '☀' : '☾'}
+        </button>
+
         <div
           className={`network-pill ${walletConnected ? 'wallet-connected' : 'wallet-disconnected'}`}
           title={`Selected Sui network: ${network}. ${walletConnected ? 'A wallet is connected.' : 'No browser wallet is connected.'}`}
