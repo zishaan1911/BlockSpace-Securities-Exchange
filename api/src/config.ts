@@ -89,7 +89,17 @@ export function loadGatewayConfig(): GatewayConfig {
       // to regress against yet. 0.5 is a deliberately middling
       // placeholder, not a derived figure.
       ethBeta: readEnvFloat('GASX_API_ETH_BETA', 0.5),
-      hedgeThresholdNotional: readEnvInt('GASX_API_HEDGE_THRESHOLD_NOTIONAL', 5000),
+      // Lowered from 5000 to 1: any nonzero, nonzero-beta position now
+      // "breaches" and proceeds toward requesting a hedge quote, rather
+      // than requiring a large exposure to trigger one. This makes
+      // getting AS FAR AS an approved hedge quote easy on small test
+      // positions. It does NOT, on its own, produce a completed
+      // Thetanuts trade -- /hedge/evaluate still stops at the approval
+      // step and never calls settleQuotation (see routes/hedge.ts's
+      // module comment). Getting an actual executed trade needs that
+      // execution step built, which is a deliberate, separate, real-
+      // money-spending addition, not a config change.
+      hedgeThresholdNotional: readEnvInt('GASX_API_HEDGE_THRESHOLD_NOTIONAL', 1),
       // Float, not int: the Thetanuts SDK accepts fractional contract
       // sizes and converts them using the collateral token's decimals,
       // so a small hedge is a real option rather than being rounded to
