@@ -15,7 +15,7 @@ import { sendChatMessage, type ChatMessage } from '../lib/api';
  * the EGSI right now" or invents a plausible-sounding number).
  */
 export function ChatWidget() {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);

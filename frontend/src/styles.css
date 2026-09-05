@@ -478,7 +478,7 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .network-pill i { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
 .account-pill span { color: var(--a-ffb03a); }
 .account-pill button { border: 0; border-left: 1px solid var(--c-2a3946); background: none; color: var(--c-778793); margin-left: 5px; padding-left: 9px; cursor: pointer; }
-.app-main { flex: 1; width: 100%; max-width: 1500px; margin: 0 auto; padding: 22px 24px 30px; }
+.app-main { flex: 1; width: 100%; max-width: 1500px; margin: 0 auto; padding: 22px 24px 30px; display: flex; flex-direction: column; gap: 20px; }
 .app-footer { border-top: 1px solid var(--c-17222c); padding: 16px 28px; display: flex; justify-content: space-between; gap: 20px; color: var(--c-52616e); font-size: 10px; }
 .app-footer a:hover { color: var(--c-8899a6); }
 
@@ -497,7 +497,8 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .negative-text { color: var(--red) !important; }
 .muted-empty { color: var(--c-647481); font-size: 11px; line-height: 1.6; padding: 18px; }
 .screen-state { min-height: 300px; display: grid; place-items: center; color: var(--c-7d8b97); }
-.dev-banner, .top-error { border: 1px solid #5c4c23; background: var(--c-1d190f); color: var(--a-d8bf6f); border-radius: 8px; padding: 10px 13px; margin-bottom: 14px; font-size: 11px; }
+.dev-banner, .top-error { border: 1px solid #5c4c23; background: var(--c-1d190f); color: var(--a-d8bf6f); border-radius: 8px; padding: 10px 13px; font-size: 11px; }
+.dev-banner { margin-bottom: 14px; }
 .dev-banner b { color: var(--a-ffdc69); margin-right: 8px; letter-spacing: .06em; }
 .top-error { display: flex; align-items: center; gap: 8px; border-color: var(--c-643238); background: var(--c-201115); color: #d98c92; }
 .top-error button { margin-left: auto; background: transparent; border: 1px solid var(--c-714148); border-radius: 6px; color: #f5a6ad; padding: 4px 9px; cursor: pointer; }
@@ -573,6 +574,10 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .field-static { display: flex; align-items: center; justify-content: space-between; }
 .field-static small { color: var(--c-526371); }
 .field input:focus, .assistant-controls input:focus { border-color: var(--c-756142); outline: none; }
+/* Plain number boxes: drop the native up/down spinner arrows. */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+input[type='number'] { -moz-appearance: textfield; appearance: textfield; }
 .order-summary { margin: 4px 16px 14px; border: 1px solid var(--c-202f3a); border-radius: 7px; background: var(--c-0d151d); padding: 8px 11px; }
 .order-summary div { display: flex; justify-content: space-between; padding: 5px 0; font-size: 9px; }
 .order-summary span { color: var(--c-657582); }

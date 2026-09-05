@@ -38,6 +38,14 @@ export function LandingPage({ onLaunch }: { onLaunch: () => void }) {
         <article id="ai-agent"><div className="feature-icon">◇</div><h3>Hedge on Thetanuts</h3><p>Live options pricing and policy-gated autonomous hedging on Base.</p></article>
         <article><div className="feature-icon">⌁</div><h3>Hard Risk Controls</h3><p>The AI can request actions, but it cannot bypass configured limits.</p></article>
       </section>
+
+      <footer className="app-footer">
+        <span>© 2026 GASX · AI-native Ethereum gas futures</span>
+        <span>Trading on Sui · Hedging on Thetanuts / Base</span>
+        <a href="https://www.tradingview.com/" target="_blank" rel="noreferrer">
+          Charts by TradingView
+        </a>
+      </footer>
     </div>
   );
 }

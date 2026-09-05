@@ -290,7 +290,7 @@ export default function App() {
           </main>
 
           <footer className="app-footer">
-            <span>GASX · AI-native Ethereum gas futures</span>
+            <span>© 2026 GASX · AI-native Ethereum gas futures</span>
             <span>Trading on Sui · Hedging on Thetanuts / Base</span>
             <a href="https://www.tradingview.com/" target="_blank" rel="noreferrer">
               Charts by TradingView

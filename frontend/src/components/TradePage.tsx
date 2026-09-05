@@ -77,7 +77,10 @@ export function TradePage({ snapshot, candles, intervalSeconds, onIntervalChange
   const [side, setSide] = useState<'long' | 'short'>('long');
   const [orderType, setOrderType] = useState<'limit' | 'market'>('limit');
   const [chartMode, setChartMode] = useState<ChartMode>('candle');
-  const [displayQuantity, setDisplayQuantity] = useState(0.05);
+  // Plain number inputs: keep the raw strings so clearing/typing is
+  // natural, and derive the number only where it's used.
+  const [sizeInput, setSizeInput] = useState('0.05');
+  const displayQuantity = Number(sizeInput) || 0;
   const market = snapshot?.market;
   const tickSize = Number.isFinite(market?.tickSize) ? market!.tickSize! : 1;
 
@@ -104,19 +107,20 @@ export function TradePage({ snapshot, candles, intervalSeconds, onIntervalChange
     ? market.oraclePrice
     : (snapshot?.quote.mid ?? snapshot?.forecast.expected ?? snapshot?.egsi.score ?? 0);
 
-  const [price, setPrice] = useState<number>(() => snapToTick(bestReferencePrice, tickSize));
+  const [priceInput, setPriceInput] = useState<string>(() => String(snapToTick(bestReferencePrice, tickSize)));
 
   // Re-snap the Limit default whenever the reference price or tick size
   // changes AND the trader has not started typing their own price yet.
   const [priceTouched, setPriceTouched] = useState(false);
   useEffect(() => {
-    if (!priceTouched) setPrice(snapToTick(bestReferencePrice, tickSize));
+    if (!priceTouched) setPriceInput(String(snapToTick(bestReferencePrice, tickSize)));
   }, [bestReferencePrice, tickSize, priceTouched]);
 
   // Market orders always use the live reference price -- see the
   // honest caveat rendered near the order button below for exactly
   // what that does and does not guarantee on this contract.
-  const effectivePrice = orderType === 'market' ? snapToTick(bestReferencePrice, tickSize) : price;
+  const price = Number(priceInput) || 0;
+  const effectivePrice = orderType === 'market' ? snapToTick(bestReferencePrice, tickSize) : snapToTick(price, tickSize);
 
   const [accountId, setAccountId] = useState('');
   const [busy, setBusy] = useState(false);
@@ -195,10 +199,10 @@ export function TradePage({ snapshot, candles, intervalSeconds, onIntervalChange
               <input
                 type="number"
                 step={tickSize}
-                value={price || ''}
+                value={priceInput}
                 onChange={(e: ChangeEvent<HTMLInputElement>) => {
                   setPriceTouched(true);
-                  setPrice(snapToTick(Number(e.target.value) || 0, tickSize));
+                  setPriceInput(e.target.value);
                 }}
               />
             </label>
@@ -215,7 +219,7 @@ export function TradePage({ snapshot, candles, intervalSeconds, onIntervalChange
               </div>
             </label>
           )}
-          <label className="field"><span>Size <small>contracts · min {MIN_DISPLAY_QUANTITY}</small></span><input type="number" min={MIN_DISPLAY_QUANTITY} step={MIN_DISPLAY_QUANTITY} value={displayQuantity} onChange={(e: ChangeEvent<HTMLInputElement>) => setDisplayQuantity(Math.max(MIN_DISPLAY_QUANTITY, Number(e.target.value) || MIN_DISPLAY_QUANTITY))} /></label>
+          <label className="field"><span>Size <small>contracts · min {MIN_DISPLAY_QUANTITY}</small></span><input type="number" min={MIN_DISPLAY_QUANTITY} step={MIN_DISPLAY_QUANTITY} value={sizeInput} onChange={(e: ChangeEvent<HTMLInputElement>) => setSizeInput(e.target.value)} /></label>
           <label className="field"><span>Margin Account ID</span><input value={accountId} onChange={(e: ChangeEvent<HTMLInputElement>) => setAccountId(e.target.value)} placeholder="0x…" /></label>
           <div className="order-summary"><div><span>Notional Value</span><b>${notional.toFixed(2)}</b></div><div><span>Est. Margin</span><b>${margin.toFixed(2)}</b></div><div><span>Collateral</span><b>USDC</b></div></div>
           <button className={`button order-button ${side === 'short' ? 'short-button' : 'button-primary'}`} disabled={!canSubmit} onClick={() => void submit()}>{!account ? 'Connect wallet to trade' : market?.devMode ? 'Deploy Sui market to trade' : busy ? 'Processing…' : 'Review & Sign  ◇'}</button>
