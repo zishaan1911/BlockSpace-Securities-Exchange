@@ -294,3 +294,153 @@ describe('POST /api/v1/hedge/candidate', () => {
     expect(res.statusCode).toBe(400);
   });
 });
+
+describe('POST /api/v1/hedge/execute', () => {
+  it('refuses without confirm: true, before touching anything', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/v1/hedge/execute', payload: BREACHING });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toMatch(/confirm: true/);
+    expect(hedgeProvider.lastRequestHedgeQuoteParams).toBeNull();
+    expect(hedgeProvider.lastExecuteHedgeCall).toBeNull();
+  });
+
+  it('refuses confirm: false the same as confirm missing', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/hedge/execute',
+      payload: { ...BREACHING, confirm: false },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(hedgeProvider.lastExecuteHedgeCall).toBeNull();
+  });
+
+  it('does not execute when exposure is within threshold, even with confirm: true', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/hedge/execute',
+      payload: { ...WITHIN, confirm: true },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().executed).toBe(false);
+    expect(hedgeProvider.lastExecuteHedgeCall).toBeNull();
+  });
+
+  it('does not execute when confidence is below the floor, even with confirm: true', async () => {
+    aiClient.forecast = { ...aiClient.forecast!, confidence: 0.5 };
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/hedge/execute',
+      payload: { ...BREACHING, confirm: true },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.approved).toBe(false);
+    expect(body.executed).toBe(false);
+    // Confidence rejects before any RFQ, same as /evaluate.
+    expect(hedgeProvider.lastRequestHedgeQuoteParams).toBeNull();
+    expect(hedgeProvider.lastExecuteHedgeCall).toBeNull();
+  });
+
+  it('does not execute when the quoted premium exceeds MAX_HEDGE_NOTIONAL', async () => {
+    hedgeProvider.bestCandidate = makeHedgeCandidate({ pricePerContract: 5000 });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/hedge/execute',
+      payload: { ...BREACHING, confirm: true },
+    });
+
+    const body = res.json();
+    expect(body.approved).toBe(false);
+    expect(body.executed).toBe(false);
+    // The RFQ WAS submitted (notional is only knowable after a quote),
+    // but settlement must never have been attempted on a rejected quote.
+    expect(hedgeProvider.lastExecuteHedgeCall).toBeNull();
+  });
+
+  it('does not execute when no market maker has responded to the RFQ', async () => {
+    hedgeProvider.bestCandidate = null;
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/hedge/execute',
+      payload: { ...BREACHING, confirm: true },
+    });
+
+    expect(res.json().executed).toBe(false);
+    expect(hedgeProvider.lastExecuteHedgeCall).toBeNull();
+  });
+
+  it('executes and returns a transaction hash for a genuinely approved hedge', async () => {
+    hedgeProvider.bestCandidate = makeHedgeCandidate({ pricePerContract: 50 });
+    hedgeProvider.executeHedgeResult = { transactionHash: '0xrealtx123' };
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/hedge/execute',
+      payload: { ...BREACHING, confirm: true },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.approved).toBe(true);
+    expect(body.executed).toBe(true);
+    expect(body.transactionHash).toBe('0xrealtx123');
+
+    // Confirms the SAME request/candidate this run produced was what
+    // got settled -- not a stale or client-supplied pair.
+    expect(hedgeProvider.lastExecuteHedgeCall).not.toBeNull();
+    expect(hedgeProvider.lastExecuteHedgeCall!.candidate.pricePerContract).toBe(50);
+    expect(hedgeProvider.lastExecuteHedgeCall!.request.quotationId).toBe('42');
+  });
+
+  it('submits a FRESH RFQ rather than reusing any previous one', async () => {
+    // Call evaluate first (as a UI naturally would, to preview the
+    // decision), THEN execute. Execute must not reuse evaluate's RFQ --
+    // it must run its own fresh chain end to end.
+    await app.inject({ method: 'POST', url: '/api/v1/hedge/evaluate', payload: BREACHING });
+    const evaluateCallCount = hedgeProvider.lastRequestHedgeQuoteParams ? 1 : 0;
+    expect(evaluateCallCount).toBe(1);
+
+    let requestQuoteCalls = 0;
+    const originalRequestQuote = hedgeProvider.requestHedgeQuote.bind(hedgeProvider);
+    hedgeProvider.requestHedgeQuote = async (params) => {
+      requestQuoteCalls++;
+      return originalRequestQuote(params);
+    };
+
+    await app.inject({ method: 'POST', url: '/api/v1/hedge/execute', payload: { ...BREACHING, confirm: true } });
+
+    expect(requestQuoteCalls).toBe(1);
+  });
+
+  it('reports a clear 502, recording approved-but-not-executed, when settlement itself fails', async () => {
+    hedgeProvider.bestCandidate = makeHedgeCandidate({ pricePerContract: 50 });
+    hedgeProvider.executeHedgeError = new Error('offer deadline lapsed');
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/hedge/execute',
+      payload: { ...BREACHING, confirm: true },
+    });
+
+    expect(res.statusCode).toBe(502);
+    const body = res.json();
+    expect(body.executed).toBe(false);
+    expect(body.error).toMatch(/approved, but settlement failed: offer deadline lapsed/);
+  });
+
+  it('rejects a non-numeric netContracts before ever reaching the pipeline', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/hedge/execute',
+      payload: { netContracts: 'lots', egsiLevel: 500, confirm: true },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(hedgeProvider.lastExecuteHedgeCall).toBeNull();
+  });
+});

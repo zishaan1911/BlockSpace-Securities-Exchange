@@ -38,7 +38,7 @@ The demo must:
 - **Phase 2 — Frontend:** wallet, market screen, order book, buy/sell form, positions.
 - **Phase 3 — EGSI + AI:** index from base fee + utilization + fee momentum + gas volatility; LightGBM forecast with confidence.
 - **Phase 4 — Thetanuts:** market data + MM pricing into the AI; add Thetanuts IV/skew to EGSI; RFQ hedge workflow.
-- **Phase 5 — Autonomous hedge:** the AI agent executes a real Thetanuts options trade on Base mainnet behind a tiny hard-coded budget.
+- **Phase 5 — Autonomous hedge:** the AI agent executes a real Thetanuts options trade on Base mainnet behind a tiny hard-coded budget. `POST /api/v1/hedge/execute` (api/src/routes/hedge.ts) implements this -- re-runs the full evaluation chain fresh, settles via Thetanuts' settleQuotationEarly only if that fresh run approves, gated behind an explicit `confirm: true`. NOT yet exercised against a live network; see that route's module comment and rfqHedge.ts's executeHedge for what remains unverified.
 
 ## Demo Script
 

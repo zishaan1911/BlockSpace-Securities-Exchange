@@ -67,7 +67,13 @@ export function loadGatewayConfig(): GatewayConfig {
       // demo budget.
       maxOrderContracts: readEnvInt('GASX_API_MAX_ORDER_CONTRACTS', 100),
       maxPositionContracts: readEnvInt('GASX_API_MAX_POSITION_CONTRACTS', 500),
-      maxSlippageBps: readEnvInt('GASX_API_MAX_SLIPPAGE_BPS', 100), // 1%
+      // Disabled by default (0 skips the check entirely -- see
+      // riskPolicy.ts's checkOrderRisk). This removes a real protection
+      // against placing an order far from the oracle price; the
+      // deliberate tradeoff is frictionless testnet trading over
+      // guarding against unfavourable pricing. Set a positive value
+      // (e.g. 100 = 1%) to re-enable it.
+      maxSlippageBps: readEnvInt('GASX_API_MAX_SLIPPAGE_BPS', 0),
       minModelConfidence: readEnvInt('GASX_API_MIN_MODEL_CONFIDENCE_PCT', 70) / 100,
       maxHedgeNotional: readEnvInt('GASX_API_MAX_HEDGE_NOTIONAL', 1000),
     },

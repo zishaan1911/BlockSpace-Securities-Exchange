@@ -105,4 +105,11 @@ export interface HedgeProvider {
   getVolSignal(underlying: HedgeUnderlying): Promise<VolSignal>;
   requestHedgeQuote(params: HedgeRequestParams): Promise<HedgeRequest>;
   getBestCandidate(request: HedgeRequest): Promise<HedgeCandidate | null>;
+  /** Settles `candidate` (which must be for `request`'s quotation) —
+   * real money on Base mainnet, no reversal. See rfqHedge.ts's
+   * executeHedge for the full safety design; this interface method
+   * carries no safety logic of its own, by design, so that the one
+   * place callers can rely on for hard-limit enforcement is the
+   * gateway route that calls it, not this adapter layer. */
+  executeHedge(request: HedgeRequest, candidate: HedgeCandidate): Promise<{ transactionHash: string }>;
 }

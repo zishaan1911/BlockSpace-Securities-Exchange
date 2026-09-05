@@ -1,15 +1,17 @@
 /**
  * ThetanutsHedgeProvider: the concrete HedgeProvider (ARCHITECTURE.md
- * §7's "one adapter... so Thetanuts types never leak") \u2014 wraps a real
+ * §7's "one adapter... so Thetanuts types never leak") -- wraps a real
  * ThetanutsClient and exposes only the GASX-shaped types from types.ts.
- * Composes fetchVolSignal (touchpoint 1) and createHedgeRequest/
- * collectBestCandidate (touchpoint 2); touchpoint 3 (autonomous
- * execution) is Phase 5, not implemented here.
+ * Composes fetchVolSignal (touchpoint 1), createHedgeRequest/
+ * collectBestCandidate (touchpoint 2), and executeHedge (touchpoint 3,
+ * autonomous execution -- real money on Base mainnet, no reversal; see
+ * rfqHedge.ts's executeHedge for the full safety design, which lives in
+ * the gateway route that calls this, not in this adapter method).
  */
 import type { ThetanutsClient } from '@thetanuts-finance/thetanuts-client';
 import { createThetanutsClient } from './client.js';
 import type { ThetanutsAdapterConfig } from './config.js';
-import { collectBestCandidate, createHedgeRequest } from './rfqHedge.js';
+import { collectBestCandidate, createHedgeRequest, executeHedge } from './rfqHedge.js';
 import type {
   HedgeCandidate,
   HedgeProvider,
@@ -43,5 +45,12 @@ export class ThetanutsHedgeProvider implements HedgeProvider {
 
   async getBestCandidate(request: HedgeRequest): Promise<HedgeCandidate | null> {
     return collectBestCandidate(this.client, request);
+  }
+
+  async executeHedge(
+    request: HedgeRequest,
+    candidate: HedgeCandidate,
+  ): Promise<{ transactionHash: string }> {
+    return executeHedge(this.client, request, candidate);
   }
 }

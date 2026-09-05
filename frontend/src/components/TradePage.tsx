@@ -85,14 +85,22 @@ export function TradePage({ snapshot, candles, intervalSeconds, onIntervalChange
   // freshest real number wins: a live, fresh oracle price is realer
   // than an indicative engine quote, which is realer than the AI
   // forecast's own prediction.
-  // pickNumber's key list is alternate flat NAMES to try, not a nested
-  // path -- snapshot.raw is the untouched gateway response, so the
-  // oracle price is read by direct navigation instead.
-  const rawMarket = snapshot?.raw?.market as { oracle?: { price?: unknown } } | undefined;
-  const rawOraclePrice = Number(rawMarket?.oracle?.price);
-  const oraclePrice = market?.oracleFresh && Number.isFinite(rawOraclePrice) ? rawOraclePrice : Number.NaN;
-  const bestReferencePrice = Number.isFinite(oraclePrice)
-    ? oraclePrice
+  // Must mirror api/src/routes/orders.ts's OWN gate exactly:
+  // `referencePrice = market.oracle.hasPrice ? market.oracle.price :
+  // undefined` -- the backend's slippage check keys on hasPrice alone,
+  // NOT freshness. Gating this on oracleFresh instead (as an earlier
+  // version of this file did) meant the frontend priced Market orders,
+  // and pre-filled Limit orders, against a completely different number
+  // (quote.mid / forecast.expected / egsi.score) whenever the oracle had
+  // a price but was not flagged fresh -- which then failed the
+  // backend's MAX_SLIPPAGE check against the oracle price it actually
+  // used, on every single order. Confirmed against a live report: an
+  // order priced at the live EGSI score was rejected as "more than
+  // MAX_SLIPPAGE (100 bps) from the reference price (165)" -- 165 being
+  // the real oracle price the backend validated against, which this
+  // component was not even using.
+  const bestReferencePrice = market?.oracleHasPrice && Number.isFinite(market.oraclePrice)
+    ? market.oraclePrice
     : (snapshot?.quote.mid ?? snapshot?.forecast.expected ?? snapshot?.egsi.score ?? 0);
 
   const [price, setPrice] = useState<number>(() => snapToTick(bestReferencePrice, tickSize));

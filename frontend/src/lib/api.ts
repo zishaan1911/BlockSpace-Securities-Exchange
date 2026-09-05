@@ -31,6 +31,8 @@ export interface MarketSnapshot {
     contractMultiplier?: number;
     marginRate?: number;
     devMode: boolean;
+    oracleHasPrice: boolean;
+    oraclePrice: number;
     oracleFresh: boolean;
   };
   quote: {
@@ -147,6 +149,7 @@ export function normaliseMarket(payload: unknown): MarketSnapshot {
   const market = rec(first(root, ['market', 'instrument']));
   const quote = rec(first(root, ['quote', 'pricing']));
   const orderbook = rec(first(root, ['orderbook', 'book', 'depth']));
+  const oracleObj = rec(first(market, ['oracle']));
   const componentsRaw = rec(first(egsi, ['components', 'drivers', 'inputs']));
 
   const components: Record<string, number> = {};
@@ -241,7 +244,7 @@ export function normaliseMarket(payload: unknown): MarketSnapshot {
     },
     market: {
       id: str(market, ['id', 'market_id', 'marketId'], 'EGSI-1H'),
-      label: str(market, ['symbol', 'name', 'label'], 'EGSI-1H'),
+      label: str(market, ['underlying', 'symbol', 'name', 'label'], 'EGSI-1H'),
       expiryMs,
       tickSize: num(market, ['tick_size', 'tickSize'], Number.NaN),
       contractMultiplier: num(
@@ -249,17 +252,27 @@ export function normaliseMarket(payload: unknown): MarketSnapshot {
         ['contract_multiplier', 'contractMultiplier', 'multiplier'],
         Number.NaN,
       ),
-      marginRate: num(
-        market,
-        ['margin_rate', 'marginRate', 'initial_margin'],
-        Number.NaN,
-      ),
+      // Real field is marginRatioBps (basis points, e.g. 100 = 1%).
+      // margin_rate/marginRate/initial_margin never existed on the real
+      // response, so this always fell to NaN and callers silently
+      // substituted their own guessed default instead of the real ratio.
+      marginRate: num(market, ['marginRatioBps', 'margin_ratio_bps'], Number.NaN) / 10_000,
       devMode: bool(
         market,
         ['dev_mode', 'devMode', 'synthetic'],
         bool(root, ['dev_mode', 'devMarket'], false),
       ),
-      oracleFresh: bool(market, ['oracle_fresh', 'oracleFresh'], true),
+      // Mirrors api/src/routes/orders.ts's own gate EXACTLY:
+      // `referencePrice = market.oracle.hasPrice ? market.oracle.price :
+      // undefined`. oracleHasPrice is what TradePage must use to decide
+      // whether it is even possible to price against a live oracle value
+      // -- freshness is a separate, additional signal for the UI banner,
+      // not part of what the backend's slippage check actually keys on.
+      oracleHasPrice: bool(oracleObj, ['hasPrice', 'has_price'], false),
+      oraclePrice: num(oracleObj, ['price'], Number.NaN),
+      oracleFresh:
+        bool(oracleObj, ['hasPrice', 'has_price'], false) &&
+        bool(oracleObj, ['isFreshApprox', 'is_fresh_approx', 'fresh'], false),
     },
     quote: {
       bid: Number.isFinite(bid) ? bid : undefined,

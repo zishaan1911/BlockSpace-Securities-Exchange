@@ -27,11 +27,27 @@ ALLOW_MAINNET=0
 # USDC. Override with --collateral <type> to do it properly.
 COLLATERAL="0x2::sui::SUI"
 
+# Market economics. required_margin (contracts/gasx/sources/risk.move)
+# scales with price * quantity * multiplier * margin_bps, so these three
+# set exactly what opening one position costs. Defaults are deliberately
+# the cheapest the contract allows -- multiplier=1 and tick=1 keep a
+# single lot's notional small, and MARGIN_BPS=1 (0.01%) is the contract's
+# actual floor: required_margin's own assert requires margin_ratio_bps
+# > 0, so true zero-margin trading is not something Move permits here.
+# This is a deliberate testnet-only choice, not a production-safe one --
+# it removes almost all collateral protection against adverse moves.
+MULTIPLIER=1
+TICK=1
+MARGIN_BPS=1
+
 for arg in "$@"; do
   case "$arg" in
     --dry-run)       DRY_RUN=1 ;;
     --allow-mainnet) ALLOW_MAINNET=1 ;;
     --collateral=*)  COLLATERAL="${arg#*=}" ;;
+    --multiplier=*)  MULTIPLIER="${arg#*=}" ;;
+    --tick=*)        TICK="${arg#*=}" ;;
+    --margin-bps=*)  MARGIN_BPS="${arg#*=}" ;;
     -h|--help)       sed -n '2,16p' "$0"; exit 0 ;;
     *) echo "unknown option: $arg" >&2; exit 1 ;;
   esac
@@ -215,7 +231,7 @@ EXPIRY_MS=$(( ($(date +%s) + 3600) * 1000 ))
 
 MARKET_JSON="$(sui client call --json --gas-budget 100000000 \
   --package "$PACKAGE_ID" --module market --function create_market \
-  --args "$ADMIN_CAP" "EGSI-1H" "$EXPIRY_MS" 10 10 1000 "$ORACLE_ID")"
+  --args "$ADMIN_CAP" "EGSI-1H" "$EXPIRY_MS" "$MULTIPLIER" "$TICK" "$MARGIN_BPS" "$ORACLE_ID")"
 
 MARKET_ID="$(echo "$MARKET_JSON" | jq -r '
   .objectChanges[]

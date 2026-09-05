@@ -74,6 +74,12 @@ export interface HedgeEvaluationRow {
   quotedNotional: number | null;
   approved: boolean | null;
   reason: string | null;
+  /** Whether this evaluation went on to actually settle a trade on
+   * Thetanuts, not merely get approved. Defaults to false for every
+   * caller except POST /hedge/execute's success path -- see that
+   * route's own comment for why "approved" and "executed" are
+   * deliberately kept as two separate, honest facts rather than one. */
+  executed: boolean;
 }
 
 export interface PreparedOrderRow {
@@ -164,8 +170,8 @@ export class MysqlDatabase implements Database {
         `INSERT INTO hedge_evaluation
            (net_contracts, egsi_level, egsi_notional, eth_beta_notional, breached,
             suggested_option_type, model_confidence, quotation_id, rfq_tx_hash, offeror,
-            price_per_contract, quoted_notional, approved, reason)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            price_per_contract, quoted_notional, approved, reason, executed)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           row.netContracts,
           row.egsiLevel,
@@ -181,6 +187,7 @@ export class MysqlDatabase implements Database {
           row.quotedNotional,
           row.approved === null ? null : row.approved ? 1 : 0,
           row.reason,
+          row.executed ? 1 : 0,
         ],
       );
     } catch (err) {
