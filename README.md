@@ -61,44 +61,40 @@ database/     MySQL schema
 scripts/      test-all.sh (every test suite, all stacks)
 ```
 
-## Quick Start — run the whole stack
+## Run
 
-Three terminals, in this order. Everything runs locally with **no keys and
-no deployment**: the Sui adapter serves a synthetic dev market (orders
-disabled, labeled in the UI) while the AI service computes a **real EGSI
-from live Ethereum data**.
+Host the backend on one machine; anyone on the same network opens it in a
+browser. Nothing to install on other machines, and no keys or deployment
+required — the Sui adapter runs in dev-market mode (orders disabled,
+labeled in the UI) while the AI service computes a **real EGSI from live
+Ethereum data**.
+
+On the host machine (Docker Desktop on Windows):
 
 ```text
-# 1. AI service (Python 3.12)
-cd ai
-uv venv venv --python 3.12 && uv pip install --python venv/bin/python -r requirements.txt
-cp .env.example .env
-venv/bin/uvicorn main:app --port 8000
-# first run: seed one EGSI snapshot (otherwise /egsi/current returns 503)
-curl -X POST http://localhost:8000/cycle -H 'content-type: application/json' -d '{}'
-
-# 2. API gateway (build the two adapters it links against, once)
-cd blockchain/sui && npm install && npm run build && cd ../..
-cd blockchain/thetanuts && npm install && npm run build && cd ../..
-cd api
-npm install
-cp .env.example .env
-npm run dev                                  # http://localhost:3000
-
-# 3. Frontend (proxies /api to :3000)
-cd frontend
-npm install
-npm run dev                                  # http://localhost:5173
+docker compose up --build   # build + start everything
 ```
 
-Open http://localhost:5173 — live EGSI gauge, forecast, market terms,
-and the hedge panel. Sanity-check the raw state with
-`curl http://localhost:3000/api/v1/market`.
+Then find the host's LAN IP (Windows: `ipconfig`, e.g. `192.168.1.20`) and
+open `http://192.168.1.20/` from any machine on the same network.
 
-To go live: deploy `contracts/gasx` on Sui and fill in the deployed IDs,
-then the same stack reads the real market and order preparation turns on.
+The stack is four services: MySQL (schema auto-applied), the AI service,
+the API gateway, and an nginx web server that serves the frontend and
+proxies `/api` to the gateway.
 
-Every test suite, one command: `./scripts/test-all.sh`.
+```text
+docker compose down         # stop and remove containers
+docker compose down -v      # also wipe the MySQL data volume
+```
+
+After you change code, rebuild with the same `docker compose up --build`
+(layer-cached). If a client can't connect: allow inbound TCP 80 through the
+Windows Firewall and turn off the router's "client isolation". If port 80
+is taken, change the `web` port in `docker-compose.yml` (e.g. `8080:80`)
+and browse `http://<host-ip>:8080/`.
+
+To go live: deploy `contracts/gasx` on Sui and fill in the deployed IDs.
+Run every test suite: `./scripts/test-all.sh`.
 
 ## The Safety Line
 
