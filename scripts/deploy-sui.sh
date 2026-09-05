@@ -114,6 +114,28 @@ fi
 say "Publishing contracts/gasx"
 # ---------------------------------------------------------------------------
 
+# The Move CLI records each publish per-network in a local Published.toml
+# (or an equivalent build-info file, depending on toolchain version) and
+# refuses to publish again over an existing entry: "Your package is
+# already published." That file is never committed -- it is a per-machine
+# publish record, not project state -- so nothing about a fresh git clone
+# would ever show it, and it only appears after a publish has actually
+# succeeded once on this machine.
+#
+# This script's whole purpose is standing up a disposable test market on
+# every run, so reusing a previous publish is never what is wanted here.
+# Rather than parse TOML in bash to remove one network's entry, every
+# publish-tracking file under contracts/gasx is cleared before publishing
+# -- broad on purpose, since guessing the exact filename has already cost
+# real time in this project once already (see the gas-JSON-shape fixes
+# above) and a stray leftover file from a different toolchain version
+# would silently defeat a narrower match.
+for stale in "$REPO_ROOT"/contracts/gasx/Published.toml              "$REPO_ROOT"/contracts/gasx/build/*/Published.toml              "$REPO_ROOT"/contracts/gasx/*.pubfile.json; do
+  [ -e "$stale" ] || continue
+  rm -f "$stale"
+  ok "cleared stale publish record: $(basename "$stale")"
+done
+
 # stdout and stderr are merged into one file rather than captured
 # separately. The first attempt at this only captured stderr on the
 # theory that build/gas errors go there -- they did not: the actual

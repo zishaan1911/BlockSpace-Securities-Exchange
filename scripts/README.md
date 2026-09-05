@@ -81,6 +81,13 @@ explicitly:
 ./scripts/deploy-sui.sh --collateral=0x...::usdc::USDC
 ```
 
+**Every run publishes a fresh package.** The Move CLI records a publish
+per-network in a local (never committed) `Published.toml` and refuses to
+publish over an existing entry -- "Your package is already published."
+Since this script exists to stand up a disposable test market each run,
+it clears that record automatically before publishing rather than
+requiring `sui client publish` to be told by hand each time.
+
 **The market expires one hour after creation.** Re-run the script for a
 fresh one if the demo is later than that; it is cheap on testnet.
 
