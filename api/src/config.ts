@@ -19,6 +19,11 @@ export interface GatewayConfig {
   thetanuts: ThetanutsAdapterConfig;
   riskPolicy: RiskPolicyConfig;
   exposureConfig: ExposureConfig;
+  /** Undefined disables the chat assistant entirely -- POST
+   * /api/v1/chat then returns 501 rather than silently degrading, since
+   * a chatbot that cannot reach an LLM is not a smaller chatbot, it is
+   * no chatbot. Never sent to the client; the key stays server-side. */
+  groq: { apiKey: string | undefined; model: string };
 }
 
 function readEnv(name: string): string | undefined {
@@ -65,6 +70,18 @@ export function loadGatewayConfig(): GatewayConfig {
       maxSlippageBps: readEnvInt('GASX_API_MAX_SLIPPAGE_BPS', 100), // 1%
       minModelConfidence: readEnvInt('GASX_API_MIN_MODEL_CONFIDENCE_PCT', 70) / 100,
       maxHedgeNotional: readEnvInt('GASX_API_MAX_HEDGE_NOTIONAL', 1000),
+    },
+    groq: {
+      apiKey: readEnv('GASX_API_GROQ_API_KEY') || undefined,
+      // llama-3.3-70b-versatile, the model most existing Groq examples
+      // still show, was deprecated (2026-07) in favour of the
+      // openai/gpt-oss family -- verified against Groq's own current
+      // docs rather than assumed, since this is exactly the kind of
+      // detail that goes stale fast. gpt-oss-20b over -120b for a
+      // chat-widget assistant: faster and cheaper, and this task
+      // (explaining the platform, reading back numbers it is handed)
+      // does not need the larger model's extra capability.
+      model: readEnv('GASX_API_GROQ_MODEL') || 'openai/gpt-oss-20b',
     },
     exposureConfig: {
       // See exposure.ts's header: this beta is a configured assumption,

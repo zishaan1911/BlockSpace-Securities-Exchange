@@ -131,6 +131,7 @@ export function HedgePage({
   const notional = pickNumber(
     latest,
     [
+      'quotedNotional',
       'notional',
       'hedge_notional',
       'recommended_notional',
@@ -167,16 +168,23 @@ export function HedgePage({
    * EGSI exposure.
    */
   async function assess() {
+    // The real gateway needs the CURRENT EGSI level to compute exposure
+    // (it multiplies position * contract size * this level), not the
+    // market id -- there is only one market, so the id was never
+    // meaningful to send. Refusing without a live EGSI reading is
+    // better than sending a stale or fabricated level.
+    const egsiLevel = snapshot?.egsi.score;
+    if (!Number.isFinite(egsiLevel)) {
+      setError('No live EGSI reading yet -- wait for the market to load before assessing.');
+      return;
+    }
+
     setBusy(true);
     setError('');
     setEvaluation(null);
 
     try {
-      const result = await assessHedge(
-        position,
-        snapshot?.market.id,
-      );
-
+      const result = await assessHedge(position, egsiLevel!);
       setAssessment(result);
     } catch (err) {
       setError(
@@ -194,17 +202,20 @@ export function HedgePage({
    * hard risk policy.
    */
   async function evaluate() {
+    // evaluate() recomputes exposure itself from netContracts/egsiLevel;
+    // it never accepted a previous assessment as input, so that value
+    // was always discarded server-side even before the request-shape fix.
+    const egsiLevel = snapshot?.egsi.score;
+    if (!Number.isFinite(egsiLevel)) {
+      setError('No live EGSI reading yet -- wait for the market to load before evaluating.');
+      return;
+    }
+
     setBusy(true);
     setError('');
 
     try {
-      const result =
-        await evaluateHedge(
-          position,
-          assessment,
-          snapshot?.market.id,
-        );
-
+      const result = await evaluateHedge(position, egsiLevel!);
       setEvaluation(result);
     } catch (err) {
       setError(

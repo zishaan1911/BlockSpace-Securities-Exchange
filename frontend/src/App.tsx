@@ -7,13 +7,14 @@ import {
   type Candle,
   type MarketSnapshot,
 } from './lib/api';
-import { AppHeader, type AppTab } from './components/AppHeader';
+import { AppHeader } from './components/AppHeader';
 import { LandingPage } from './components/LandingPage';
 import { WalletModal } from './components/WalletModal';
 import { MarketDashboard } from './components/MarketDashboard';
 import { TradePage, type SessionTrade } from './components/TradePage';
 import { HedgePage } from './components/HedgePage';
 import { AnalyticsPage } from './components/AnalyticsPage';
+import { ChatWidget } from './components/ChatWidget';
 
 function SessionPositions({ trades }: { trades: SessionTrade[] }) {
   return (
@@ -124,12 +125,16 @@ export default function App() {
   const account = useCurrentAccount();
 
   const [view, setView] = useState<'landing' | 'app'>('landing');
-  const [tab, setTab] = useState<AppTab>('market');
   const [walletOpen, setWalletOpen] = useState(false);
 
   const [snapshot, setSnapshot] = useState<MarketSnapshot | null>(null);
   const [apiCandles, setApiCandles] = useState<Candle[]>([]);
   const [sessionCandles, setSessionCandles] = useState<Candle[]>([]);
+  // Timeframe (seconds). Previously the 1m/5m/1h/4h/1d buttons on the
+  // Trade page were rendered with no onClick at all -- clicking any of
+  // them did nothing. This is now real, shared state so choosing one
+  // actually re-fetches candles at that bucket width.
+  const [intervalSeconds, setIntervalSeconds] = useState(3600);
 
   const [loading, setLoading] = useState(false);
   const [marketError, setMarketError] = useState('');
@@ -147,7 +152,7 @@ export default function App() {
     try {
       const [marketResult, candleResult] = await Promise.allSettled([
         getMarket(),
-        getCandles(),
+        getCandles(intervalSeconds),
       ]);
 
       if (marketResult.status === 'fulfilled') {
@@ -181,7 +186,7 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [intervalSeconds]);
 
   useEffect(() => {
     if (view !== 'app') return;
@@ -192,27 +197,47 @@ export default function App() {
     return () => window.clearInterval(timer);
   }, [view, refresh]);
 
+  // A change of timeframe should refetch immediately, not wait for the
+  // next 15s poll -- and session-built candles (from live snapshots,
+  // used as a fallback while the database has no saved history yet) are
+  // bucketed at 1 minute, so they no longer make sense once the user
+  // picks a different bucket width; refresh() will replace them with
+  // real candles at the new width, or App falls back to an empty list
+  // until the next live snapshot arrives.
+  useEffect(() => {
+    setSessionCandles([]);
+  }, [intervalSeconds]);
+
   useEffect(() => {
     if (account && walletOpen) setWalletOpen(false);
   }, [account, walletOpen]);
 
-  function launch(tabTarget: AppTab = 'market') {
+  // Ensures the single Markets page is visible, then optionally scrolls
+  // to one of its sections. Previously this switched WHICH page was
+  // rendered (market/trade/hedge/analytics as separate views); now there
+  // is only one page, so this only ever needs to reveal it and scroll.
+  function goToMarkets(sectionId?: string) {
     setView('app');
-    setTab(tabTarget);
+    if (sectionId) {
+      // Wait a tick for the app view to actually mount (coming from the
+      // landing page) before trying to find the section to scroll to.
+      requestAnimationFrame(() => {
+        document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    }
   }
 
   return (
     <>
       {view === 'landing' ? (
         <LandingPage
-          onLaunch={() => launch('market')}
+          onLaunch={() => goToMarkets()}
           onConnect={() => setWalletOpen(true)}
         />
       ) : (
         <div className="app-shell">
           <AppHeader
-            active={tab}
-            onTab={setTab}
+            onMarkets={goToMarkets}
             onConnect={() => setWalletOpen(true)}
             onHome={() => setView('landing')}
           />
@@ -227,33 +252,45 @@ export default function App() {
 
             {historyNotice && <div className="history-notice">{historyNotice}</div>}
 
-            {tab === 'market' && (
+            {/*
+              All four sections render together on one page now, instead
+              of behind separate tabs where only one was ever visible at
+              a time. Each section keeps its own existing markup/classes
+              completely unchanged -- only a scroll-target id wrapper is
+              added around each, which does not affect layout (.app-main
+              is a plain flex container, not a grid keyed to specific
+              direct children).
+            */}
+            <div id="section-overview">
               <MarketDashboard
                 snapshot={snapshot}
                 candles={candles}
                 loading={loading}
                 error={marketError}
-                onTrade={() => setTab('trade')}
+                onTrade={() => goToMarkets('section-trade')}
               />
-            )}
+            </div>
 
-            {tab === 'trade' && (
-              <>
-                <TradePage
-                  snapshot={snapshot}
-                  candles={candles}
-                  onTrade={(trade) =>
-                    setSessionTrades((current) => [trade, ...current])
-                  }
-                />
-                <SessionPositions trades={sessionTrades} />
-              </>
-            )}
+            <div id="section-trade">
+              <TradePage
+                snapshot={snapshot}
+                candles={candles}
+                intervalSeconds={intervalSeconds}
+                onIntervalChange={setIntervalSeconds}
+                onTrade={(trade) =>
+                  setSessionTrades((current) => [trade, ...current])
+                }
+              />
+              <SessionPositions trades={sessionTrades} />
+            </div>
 
-            {tab === 'hedge' && <HedgePage snapshot={snapshot} />}
-            {tab === 'analytics' && (
+            <div id="section-hedge">
+              <HedgePage snapshot={snapshot} />
+            </div>
+
+            <div id="section-analytics">
               <AnalyticsPage snapshot={snapshot} candles={candles} />
-            )}
+            </div>
           </main>
 
           <footer className="app-footer">
@@ -267,6 +304,10 @@ export default function App() {
       )}
 
       <WalletModal open={walletOpen} onClose={() => setWalletOpen(false)} />
+
+      {/* Persistent floating assistant, not a nav destination -- reachable
+          from the landing page or the app view alike. */}
+      <ChatWidget />
     </>
   );
 }

@@ -15,6 +15,7 @@ import { AiServiceError } from './aiClient.js';
 import type { ExposureConfig } from './exposure.js';
 import type { RiskPolicyConfig } from './riskPolicy.js';
 import { registerAccountRoutes } from './routes/account.js';
+import { registerChatRoutes } from './routes/chat.js';
 import { registerHedgeRoutes } from './routes/hedge.js';
 import { registerMarketRoutes } from './routes/market.js';
 import { registerOrderRoutes } from './routes/orders.js';
@@ -28,6 +29,9 @@ export interface GatewayDeps {
   /** Optional off-chain depth/quote layer (the C++ engine). Null runs
    * the gateway exactly as before, without indicative depth. */
   engine?: EngineLayer | null;
+  /** Undefined apiKey disables the chat assistant (POST /api/v1/chat
+   * returns 501) rather than the route silently degrading. */
+  groq?: { apiKey: string | undefined; model: string };
   /** Null when no database is configured; every call site treats
    * persistence as optional. */
   db?: Database | null;
@@ -44,6 +48,7 @@ export function buildServer(deps: GatewayDeps): FastifyInstance {
   registerOrderRoutes(app, deps);
   registerAccountRoutes(app, deps);
   registerHedgeRoutes(app, deps);
+  registerChatRoutes(app, deps);
 
   // AiServiceError (POST /cycle failed or was unreachable) maps to 502 —
   // this gateway's fault lies with an upstream dependency, not the

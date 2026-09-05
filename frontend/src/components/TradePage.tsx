@@ -22,9 +22,19 @@ function txDigest(result: unknown): string {
   return '';
 }
 
-export function TradePage({ snapshot, candles, onTrade }: {
+const TIMEFRAMES = [
+  { label: '1m', seconds: 60 },
+  { label: '5m', seconds: 300 },
+  { label: '1h', seconds: 3600 },
+  { label: '4h', seconds: 14400 },
+  { label: '1d', seconds: 86400 },
+] as const;
+
+export function TradePage({ snapshot, candles, intervalSeconds, onIntervalChange, onTrade }: {
   snapshot: MarketSnapshot | null;
   candles: Candle[];
+  intervalSeconds: number;
+  onIntervalChange: (seconds: number) => void;
   onTrade: (trade: SessionTrade) => void;
 }) {
   const account = useCurrentAccount();
@@ -98,7 +108,17 @@ export function TradePage({ snapshot, candles, onTrade }: {
         </section>
 
         <section className="card price-chart-card">
-          <div className="card-heading chart-heading"><div><span className="section-kicker">EGSI MARKET</span><h2>Price Chart</h2></div><div className="timeframes"><button>1m</button><button>5m</button><button className="active">1h</button><button>4h</button><button>1d</button></div></div>
+          <div className="card-heading chart-heading"><div><span className="section-kicker">EGSI MARKET</span><h2>Price Chart</h2></div><div className="timeframes">
+            {TIMEFRAMES.map((tf) => (
+              <button
+                key={tf.seconds}
+                className={tf.seconds === intervalSeconds ? 'active' : ''}
+                onClick={() => onIntervalChange(tf.seconds)}
+              >
+                {tf.label}
+              </button>
+            ))}
+          </div></div>
           <div className="main-candle-chart">{candles.length ? <CandleChart candles={candles} /> : <div className="chart-empty">Waiting for candle history…</div>}</div>
           <div className="chart-metrics">
             <div><strong>{lastCandle ? lastCandle.close.toFixed(1) : defaultPrice.toFixed(1)}</strong><span>Last EGSI</span></div>

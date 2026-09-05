@@ -5,7 +5,15 @@ import {
 } from '@mysten/dapp-kit-react';
 import { Brand } from './Brand';
 
-export type AppTab = 'market' | 'trade' | 'hedge' | 'analytics';
+// Section ids on the single, unified Markets page (App.tsx). These are no
+// longer separate views to switch between -- clicking one just scrolls
+// the already-rendered section into view.
+export const MARKET_SECTIONS = [
+  { id: 'section-overview', label: 'Overview' },
+  { id: 'section-trade', label: 'Trade' },
+  { id: 'section-hedge', label: 'Hedge' },
+  { id: 'section-analytics', label: 'Analytics' },
+] as const;
 
 function shortAddress(address: string) {
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
@@ -16,13 +24,14 @@ function networkLabel(network: string) {
 }
 
 export function AppHeader({
-  active,
-  onTab,
+  onMarkets,
   onConnect,
   onHome,
 }: {
-  active: AppTab;
-  onTab: (tab: AppTab) => void;
+  /** Ensures the single Markets page is showing, then scrolls to it.
+   * Called both by "Markets" itself and, with a target section, by
+   * each of the four in-page shortcuts. */
+  onMarkets: (sectionId?: string) => void;
   onConnect: () => void;
   onHome: () => void;
 }) {
@@ -54,13 +63,21 @@ export function AppHeader({
       </button>
 
       <nav className="app-nav">
-        {(['market', 'trade', 'hedge', 'analytics'] as AppTab[]).map((tab) => (
-          <button
-            key={tab}
-            className={active === tab ? 'active' : ''}
-            onClick={() => onTab(tab)}
-          >
-            {tab[0]!.toUpperCase() + tab.slice(1)}
+        {/* Explicit Home entry -- previously only reachable by clicking the
+            brand mark, which is a common but not especially discoverable
+            pattern. Kept the brand-click behaviour too; this just adds a
+            labelled way to do the same thing. */}
+        <button onClick={onHome}>Home</button>
+
+        {/* All four used to be separate top-level views, each showing only
+            its own page -- clicking "Trade" hid the market overview
+            entirely, and there was no single place that showed
+            everything at once. They now all render together on one
+            Markets page (App.tsx); these buttons just jump to a section
+            of it rather than switching what is rendered. */}
+        {MARKET_SECTIONS.map((section) => (
+          <button key={section.id} onClick={() => onMarkets(section.id)}>
+            {section.label}
           </button>
         ))}
       </nav>
