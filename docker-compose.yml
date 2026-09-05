@@ -25,7 +25,6 @@ services:
     environment:
       GASX_AI_ETHEREUM_RPC_URL: ${GASX_AI_ETHEREUM_RPC_URL:-https://ethereum-rpc.publicnode.com}
       GASX_AI_CYCLE_INTERVAL_SECONDS: ${GASX_AI_CYCLE_INTERVAL_SECONDS:-12}
-      GASX_AI_SUI_RPC_URL: https://fullnode.testnet.sui.io:443
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 5s

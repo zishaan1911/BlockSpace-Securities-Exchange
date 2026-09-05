@@ -108,11 +108,6 @@ def test_forecast_reports_503_with_too_little_history_rather_than_inventing_one(
     assert client.get("/forecast").status_code == 503
 
 
-def test_publish_returns_503_when_no_snapshot_yet(client):
-    resp = client.post("/publish")
-    assert resp.status_code == 503
-
-
 def test_cycle_accepts_optional_thetanuts_signal(client):
     with patch("main.EthereumIngestionClient") as mock_cls:
         mock_instance = MagicMock()
@@ -142,12 +137,6 @@ def test_forecast_reflects_thetanuts_skew_from_last_cycle(client):
     client.post("/history/restore", json={"scores": [400, 420, 450, 430, 410, 440, 425, 415, 435, 445]})
     resp = client.get("/forecast")
     assert resp.status_code == 200
-
-
-def test_publish_returns_501_when_not_configured(client):
-    run_cycle_with_mocked_ingestion(client)
-    resp = client.post("/publish")
-    assert resp.status_code == 501
 
 
 # ---------------------------------------------------------------------------

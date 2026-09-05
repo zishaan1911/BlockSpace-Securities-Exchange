@@ -279,12 +279,6 @@ set_env "$SUI_ENV" GASX_SUI_COLLATERAL_COIN_TYPE "$COLLATERAL"
 set_env "$SUI_ENV" GASX_SUI_DEV_MARKET "false"
 ok "blockchain/sui/.env updated (dev market OFF)"
 
-AI_ENV="$REPO_ROOT/ai/.env"
-set_env "$AI_ENV" GASX_AI_SUI_RPC_URL "$RPC_URL"
-set_env "$AI_ENV" GASX_AI_SUI_PACKAGE_ID "$PACKAGE_ID"
-set_env "$AI_ENV" GASX_AI_SUI_ORACLE_OBJECT_ID "$ORACLE_ID"
-ok "ai/.env updated (oracle publishing target set)"
-
 cat <<EOF
 
 $(printf '\033[1;32mDeployed.\033[0m')
@@ -309,9 +303,5 @@ Restart the gateway to pick this up:
 
 It should no longer print the dev-market warning, and GET /api/v1/market
 will read the real Market object.
-
-The AI service still needs GASX_AI_SUI_PUBLISHER_PRIVATE_KEY set before
-it can publish EGSI on-chain. That key must belong to $ACTIVE_ADDR,
-since that is the address authorised as the oracle publisher above.
 
 EOF

@@ -1,5 +1,5 @@
 """FastAPI entrypoint for the GASX AI service (ARCHITECTURE.md §2:
-"Ingest Ethereum data, compute EGSI, forecast, publish oracle").
+"Ingest Ethereum data, compute EGSI, forecast").
 
 Run with:
 
@@ -194,10 +194,9 @@ def restore_history(request: HistoryRestoreRequest) -> dict:
 
 @app.post("/cycle", response_model=EgsiSnapshot)
 def run_cycle(thetanuts: CycleRequest | None = None) -> EgsiSnapshot:
-    """One ingest -> compute EGSI -> update history cycle. Does NOT
-    publish to Sui — that's a separate, explicit step (POST /publish),
-    since an on-chain write with real (testnet-or-real) gas cost should
-    never happen as a side effect of a read/compute loop.
+    """One ingest -> compute EGSI -> update history cycle. EGSI is served
+    off-chain (the gateway reads it over HTTP) — there is no on-chain
+    oracle write.
 
     `thetanuts` is optional (ARCHITECTURE.md §3, §4) — see CycleRequest's
     docstring in schemas.py for why there's no automatic live wiring to
@@ -207,29 +206,3 @@ def run_cycle(thetanuts: CycleRequest | None = None) -> EgsiSnapshot:
     live Thetanuts signal (the background loop has none) and how the
     gateway's /hedge/sync-signal route drives a cycle on demand."""
     return _perform_cycle(thetanuts)
-
-
-@app.post("/publish")
-async def publish_oracle_price() -> dict:
-    """Publishes the latest EGSI snapshot's integer score on-chain via
-    OraclePublisher (ARCHITECTURE.md §6). Disabled (501) unless
-    SUI_PUBLISHER_PRIVATE_KEY/SUI_PACKAGE_ID/SUI_ORACLE_OBJECT_ID are all
-    configured — see oracle/publisher.py's module docstring for why this
-    can't be exercised in Claude's sandbox."""
-    if _latest_snapshot is None:
-        raise HTTPException(status_code=503, detail="no EGSI snapshot yet — call POST /cycle first")
-    if not (settings.sui_publisher_private_key and settings.sui_package_id and settings.sui_oracle_object_id):
-        raise HTTPException(status_code=501, detail="oracle publishing not configured — see .env.example")
-
-    from oracle.publisher import OraclePublisher, OraclePublishTarget
-
-    publisher = OraclePublisher(
-        rpc_url=settings.sui_rpc_url,
-        publisher_private_key=settings.sui_publisher_private_key,
-        target=OraclePublishTarget(
-            package_id=settings.sui_package_id,
-            oracle_object_id=settings.sui_oracle_object_id,
-        ),
-    )
-    digest = await publisher.publish_price(_latest_snapshot.score)
-    return {"digest": digest, "price": _latest_snapshot.score}

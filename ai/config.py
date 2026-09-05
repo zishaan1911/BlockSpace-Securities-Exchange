@@ -14,10 +14,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # pydantic-settings resolves a relative env_file against the CWD, and
 # main.py documents running uvicorn from the repo root
 # (`uvicorn main:app --app-dir ai`), where a bare ".env" resolved to
-# <repo-root>/.env — which doesn't exist. That failed silently: every
-# Sui oracle setting below fell back to its empty default and
-# POST /publish returned 501 "not configured" even with a correctly
-# filled-in ai/.env.
+# <repo-root>/.env — which doesn't exist, so settings silently fell back
+# to their defaults.
 _ENV_FILE = Path(__file__).resolve().parent / ".env"
 
 
@@ -26,16 +24,6 @@ class Settings(BaseSettings):
 
     # Ethereum ingestion (features/egsi.py's raw inputs).
     ethereum_rpc_url: str = "https://ethereum-rpc.publicnode.com"
-
-    # Sui oracle publish (oracle/publisher.py; ARCHITECTURE.md §6). Leave
-    # blank to disable publishing — /publish returns 501 until all three
-    # are set. sui_publisher_private_key must be a Sui base64 keystring
-    # for the address gasx::oracle::set_publisher authorized as this
-    # market's oracle publisher.
-    sui_rpc_url: str = "https://fullnode.testnet.sui.io:443"
-    sui_publisher_private_key: str = ""
-    sui_package_id: str = ""
-    sui_oracle_object_id: str = ""
 
     # EGSI history / forecasting.
     egsi_history_max_len: int = 200
