@@ -111,11 +111,14 @@ export function HedgePage({
       'reason',
       'explanation',
       'message',
+      'error',
       'decision_reason',
     ],
-    assessment !== null
-      ? 'Risk assessment returned by GASX.'
-      : 'Enter your net EGSI position and request a live assessment.',
+    approved
+      ? 'All risk checks passed for the quoted premium.'
+      : assessment !== null
+        ? 'Risk assessment returned by GASX.'
+        : 'Enter your net EGSI position and request a live assessment.',
   );
 
   const confidence = pickNumber(
@@ -139,18 +142,23 @@ export function HedgePage({
     Number.NaN,
   );
 
-  const strategy = pickText(
-    latest,
-    [
-      'strategy',
-      'instrument',
-      'recommendation',
-      'option',
-    ],
-    approved
-      ? 'Approved hedge candidate'
-      : 'Waiting for policy decision',
-  );
+  // The real /hedge/evaluate response has no strategy/instrument/
+  // recommendation/option field at all -- it never existed on the
+  // backend, so this always fell through to one of the two hardcoded
+  // defaults regardless of what actually happened. In particular, a
+  // REJECTED evaluation (a real decision, with a real reason already
+  // returned) still showed "Waiting for policy decision" as if nothing
+  // had been decided yet. Derived from the fields that actually exist
+  // instead: approved, reason, and whether an evaluate call has run
+  // (evaluation !== null) versus only an assess (assessment only).
+  const hasEvaluated = evaluation !== null;
+  const strategy = approved
+    ? 'Approved -- within all risk limits'
+    : hasEvaluated
+      ? 'Rejected by risk policy'
+      : hasLatest
+        ? 'Exposure assessed -- request a quote for a policy decision'
+        : 'No assessment yet';
 
   const execution = pickText(
     latest,

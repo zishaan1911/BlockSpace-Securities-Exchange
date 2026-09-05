@@ -1,13 +1,21 @@
 /**
  * Touchpoint 2 ("RFQ hedge") of ARCHITECTURE.md §7: "when GASX's
  * ETH-beta exposure exceeds a threshold, request quotes and present the
- * best candidate to the risk engine." This module covers exactly that \u2014
- * creating the RFQ and collecting/decrypting/ranking offers into a
- * HedgeCandidate. It deliberately stops there: evaluating a candidate
- * against ARCHITECTURE.md §8's hard risk policy and actually settling a
- * quote (client.optionFactory.encodeSettleQuotationEarly /
- * settleQuotation) are Phase 5's autonomous-execution step (GOALS.md),
- * not implemented here.
+ * best candidate to the risk engine." This module covers creating the
+ * RFQ, collecting/decrypting/ranking offers into a HedgeCandidate, and
+ * (as of executeHedge below) actually settling one -- touchpoint 3,
+ * autonomous execution.
+ *
+ * executeHedge is real money on Base mainnet with no reversal: once
+ * settleQuotationEarly lands, the option is open and the premium is
+ * spent. It is called from exactly one place, api/src/routes/hedge.ts's
+ * POST /hedge/execute, which re-runs the ENTIRE evaluation pipeline
+ * itself (fresh exposure assessment, fresh vol signal, a brand-new RFQ,
+ * a fresh risk-policy check) rather than trusting a client-supplied
+ * "this was approved earlier" flag -- ARCHITECTURE.md §8's guarantee
+ * that hard limits cannot be bypassed has to hold at the moment money
+ * actually moves, not at some earlier moment whose conditions may have
+ * changed. See that route's own comment for the full safety design.
  */
 import type { ThetanutsClient } from '@thetanuts-finance/thetanuts-client';
 import type { HedgeCandidate, HedgeDirection, HedgeRequest, HedgeRequestParams } from './types.js';
@@ -156,4 +164,55 @@ export async function collectBestCandidate(
 export function pricePerContractFromOfferAmount(offerAmount: bigint, numContracts: number): number {
   const totalUsdc = Number(offerAmount) / 1e6;
   return numContracts > 0 ? totalUsdc / numContracts : totalUsdc;
+}
+
+/**
+ * Settles a specific decrypted offer — ARCHITECTURE.md §7's touchpoint 3,
+ * autonomous execution. Calls client.optionFactory.settleQuotationEarly,
+ * which pulls collateral from the hedge wallet and opens the option
+ * position on Base mainnet. This is the one call in the whole GASX
+ * codebase that spends real, non-recoverable money — see this module's
+ * header comment for why the safety design (fresh re-evaluation, not a
+ * trusted flag) lives in the caller (api/src/routes/hedge.ts), not here.
+ *
+ * `candidate` must be the SAME quotation `request` was built from —
+ * settling a different quotation's candidate against this request would
+ * settle the wrong RFQ. Both are threaded through as separate
+ * parameters rather than one combined object because HedgeCandidate is
+ * already an established type from getBestCandidate(); requiring the
+ * caller to supply both is what makes a request/candidate mismatch a
+ * compile-time question instead of a runtime one.
+ *
+ * NOT exercised against a live Thetanuts endpoint from Claude's
+ * sandbox — no network egress to Base RPC there, and this deliberately
+ * never receives a real private key regardless. This is the single
+ * most consequential unverified call in the project: it needs to work
+ * correctly the first time it runs for real, because there is no way to
+ * rehearse it risk-free (Thetanuts has no testnet). Read this function
+ * and its caller carefully before the first live run.
+ */
+export async function executeHedge(
+  client: ThetanutsClient,
+  request: HedgeRequest,
+  candidate: HedgeCandidate,
+): Promise<{ transactionHash: string }> {
+  if (!client.signer) {
+    throw new Error(
+      'executeHedge requires a signer — set GASX_THETANUTS_HEDGE_WALLET_PRIVATE_KEY (see .env.example)',
+    );
+  }
+  if (candidate.quotationId !== request.quotationId) {
+    throw new Error(
+      `candidate is for quotation ${candidate.quotationId} but request is for ${request.quotationId} — refusing to settle a mismatched pair`,
+    );
+  }
+
+  const receipt = await client.optionFactory.settleQuotationEarly(
+    BigInt(request.quotationId),
+    BigInt(candidate.raw.offerAmount),
+    BigInt(candidate.raw.nonce),
+    candidate.offeror,
+  );
+
+  return { transactionHash: receipt.hash };
 }

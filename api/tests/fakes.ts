@@ -117,6 +117,22 @@ export class FakeHedgeProvider implements HedgeProvider {
   async getBestCandidate(_request: HedgeRequest): Promise<HedgeCandidate | null> {
     return this.bestCandidate;
   }
+
+  executeHedgeError: Error | null = null;
+  /** Recorded so tests can assert /execute settled the SAME request and
+   * candidate runHedgeEvaluation actually approved, not a stale or
+   * fabricated pair. */
+  lastExecuteHedgeCall: { request: HedgeRequest; candidate: HedgeCandidate } | null = null;
+  executeHedgeResult: { transactionHash: string } = { transactionHash: '0xsettletx' };
+
+  async executeHedge(
+    request: HedgeRequest,
+    candidate: HedgeCandidate,
+  ): Promise<{ transactionHash: string }> {
+    if (this.executeHedgeError) throw this.executeHedgeError;
+    this.lastExecuteHedgeCall = { request, candidate };
+    return this.executeHedgeResult;
+  }
 }
 
 export function makeHedgeCandidate(overrides: Partial<HedgeCandidate> = {}): HedgeCandidate {

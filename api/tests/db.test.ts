@@ -150,6 +150,7 @@ describe.skipIf(!url)('MysqlDatabase (real server)', () => {
       quotedNotional: 50,
       approved: true,
       reason: null,
+      executed: false,
     });
 
     const [rows] = await raw.query('SELECT * FROM hedge_evaluation');
@@ -176,6 +177,7 @@ describe.skipIf(!url)('MysqlDatabase (real server)', () => {
       quotedNotional: null,
       approved: false,
       reason: 'model confidence (0.4) is below MIN_MODEL_CONFIDENCE (0.7)',
+      executed: false,
     });
 
     const [rows] = await raw.query('SELECT approved, reason FROM hedge_evaluation');
@@ -200,10 +202,36 @@ describe.skipIf(!url)('MysqlDatabase (real server)', () => {
       quotedNotional: null,
       approved: null,
       reason: 'within threshold',
+      executed: false,
     });
 
     const [rows] = await raw.query('SELECT approved FROM hedge_evaluation');
     expect((rows as Record<string, unknown>[])[0]!.approved).toBeNull();
+  });
+
+  it('records executed: true only for a hedge that actually settled', async () => {
+    await db.recordHedgeEvaluation({
+      netContracts: 10,
+      egsiLevel: 500,
+      egsiNotional: 50000,
+      ethBetaNotional: 25000,
+      breached: true,
+      suggestedOptionType: 'PUT',
+      modelConfidence: 0.9,
+      quotationId: '77',
+      rfqTxHash: '0xrfq',
+      offeror: '0xmm',
+      pricePerContract: 50,
+      quotedNotional: 50,
+      approved: true,
+      reason: null,
+      executed: true,
+    });
+
+    const [rows] = await raw.query('SELECT approved, executed FROM hedge_evaluation');
+    const row = (rows as Record<string, unknown>[])[0]!;
+    expect(row.approved).toBe(1);
+    expect(row.executed).toBe(1);
   });
 
   it('records a negative (net short) exposure without losing the sign', async () => {
@@ -222,6 +250,7 @@ describe.skipIf(!url)('MysqlDatabase (real server)', () => {
       quotedNotional: null,
       approved: null,
       reason: null,
+      executed: false,
     });
 
     const [rows] = await raw.query('SELECT net_contracts, eth_beta_notional FROM hedge_evaluation');

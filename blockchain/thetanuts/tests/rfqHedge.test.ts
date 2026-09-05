@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { pickBestCandidate, pricePerContractFromOfferAmount } from '../src/rfqHedge.js';
-import type { HedgeCandidate } from '../src/types.js';
+import type { HedgeCandidate, HedgeRequest } from '../src/types.js';
 
 function makeCandidate(pricePerContract: number, offeror = '0xoffer'): HedgeCandidate {
   return {
@@ -68,5 +68,94 @@ describe('pricePerContractFromOfferAmount', () => {
   it('handles a single contract', () => {
     const result = pricePerContractFromOfferAmount(3_500000n, 1);
     expect(result).toBeCloseTo(3.5, 10);
+  });
+});
+
+describe('executeHedge', () => {
+  it('refuses without a signer, before making any network call', async () => {
+    const { executeHedge } = await import('../src/rfqHedge.js');
+    const client = { signer: undefined } as unknown as Parameters<typeof executeHedge>[0];
+    const request: HedgeRequest = {
+      quotationId: '42',
+      underlying: 'ETH',
+      optionType: 'PUT',
+      strike: 2000,
+      expiry: 1_700_600_000,
+      numContracts: 1,
+      direction: 'BUY',
+      offerDeadlineUnixSeconds: 1_700_000_600,
+      transactionHash: '0xrfqtx',
+    };
+    const candidate: HedgeCandidate = {
+      quotationId: '42',
+      offeror: '0xmm',
+      pricePerContract: 50,
+      raw: { offerAmount: '50000000', nonce: '1' },
+    };
+
+    await expect(executeHedge(client, request, candidate)).rejects.toThrow(/requires a signer/);
+  });
+
+  it('refuses to settle a candidate for a different quotation than the request', async () => {
+    const { executeHedge } = await import('../src/rfqHedge.js');
+    const client = { signer: {} } as unknown as Parameters<typeof executeHedge>[0];
+    const request: HedgeRequest = {
+      quotationId: '42',
+      underlying: 'ETH',
+      optionType: 'PUT',
+      strike: 2000,
+      expiry: 1_700_600_000,
+      numContracts: 1,
+      direction: 'BUY',
+      offerDeadlineUnixSeconds: 1_700_000_600,
+      transactionHash: '0xrfqtx',
+    };
+    // A candidate for a DIFFERENT quotation -- this must never be
+    // settled against `request`'s id.
+    const mismatchedCandidate: HedgeCandidate = {
+      quotationId: '99',
+      offeror: '0xmm',
+      pricePerContract: 50,
+      raw: { offerAmount: '50000000', nonce: '1' },
+    };
+
+    await expect(executeHedge(client, request, mismatchedCandidate)).rejects.toThrow(/mismatched pair/);
+  });
+
+  it('calls settleQuotationEarly with the exact decrypted offer fields, as bigints', async () => {
+    const { executeHedge } = await import('../src/rfqHedge.js');
+    let capturedArgs: unknown[] = [];
+    const client = {
+      signer: {},
+      optionFactory: {
+        settleQuotationEarly: async (...args: unknown[]) => {
+          capturedArgs = args;
+          return { hash: '0xsettletx' };
+        },
+      },
+    } as unknown as Parameters<typeof executeHedge>[0];
+
+    const request: HedgeRequest = {
+      quotationId: '42',
+      underlying: 'ETH',
+      optionType: 'PUT',
+      strike: 2000,
+      expiry: 1_700_600_000,
+      numContracts: 1,
+      direction: 'BUY',
+      offerDeadlineUnixSeconds: 1_700_000_600,
+      transactionHash: '0xrfqtx',
+    };
+    const candidate: HedgeCandidate = {
+      quotationId: '42',
+      offeror: '0xmm',
+      pricePerContract: 50,
+      raw: { offerAmount: '50000000', nonce: '7' },
+    };
+
+    const result = await executeHedge(client, request, candidate);
+
+    expect(capturedArgs).toEqual([42n, 50000000n, 7n, '0xmm']);
+    expect(result).toEqual({ transactionHash: '0xsettletx' });
   });
 });
