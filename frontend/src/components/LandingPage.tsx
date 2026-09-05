@@ -17,7 +17,7 @@ export function LandingPage({ onLaunch }: { onLaunch: () => void }) {
       <main className="hero">
         <section className="hero-copy">
           <div className="eyebrow"><span /> AI-native gas derivatives</div>
-          <h1>Trade and hedge<br />Ethereum gas<br /><em>with AI.</em></h1>
+          <h1>Trade and hedge<br />Ethereum gas<br /><em>with Agentic AI.</em></h1>
           <p>GASX turns Ethereum blockspace stress into a tradeable 1-hour futures market on Sui, with AI-driven risk hedging through Thetanuts.</p>
           <div className="hero-actions">
             <button className="button button-primary" onClick={onLaunch}>Launch App <span>→</span></button>

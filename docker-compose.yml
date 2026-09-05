@@ -9,7 +9,8 @@ services:
       MYSQL_ROOT_PASSWORD: gasx
     volumes:
       - mysql-data:/var/lib/mysql
-      - ./database/migrations:/docker-entrypoint-initdb.d:ro
+      - ./database/migrations/001_initial_schema.sql:/docker-entrypoint-initdb.d/001_initial_schema.sql:ro
+      - ./database/backup/gasx-export-2026-09-01.sql.gz:/docker-entrypoint-initdb.d/gasx-export-2026-09-01.sql.gz:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-pgasx"]
       interval: 5s

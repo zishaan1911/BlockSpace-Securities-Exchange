@@ -620,7 +620,7 @@ input[type='number'] { -moz-appearance: textfield; appearance: textfield; }
 
 /* Hedge */
 .hedge-grid { display: grid; grid-template-columns: minmax(0,1fr) 330px; gap: 14px; }
-.ai-assistant-card { min-height: 650px; }
+.ai-assistant-card { min-height: 534px; }
 .hedge-side-column { display: grid; gap: 14px; align-content: start; }
 .risk-limits-card, .actions-card { min-height: 260px; }
 .assistant-thread { padding: 10px 18px 12px; display: grid; grid-template-columns: 34px 1fr; gap: 12px; }
